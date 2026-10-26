@@ -39,7 +39,7 @@ buildSync({
       export { VitalEntries, Correction } from './src/roles/VitalsHistory.jsx';
       export { QuickBookModal } from './src/roles/ClinicCalendar.jsx';
       export { default as BookingReason } from './src/components/BookingReason.jsx';
-      export { VetCardTimeline } from './src/roles/DigitalVetCard.jsx';
+      export { VetCardTimeline, NextPreventiveCare } from './src/roles/DigitalVetCard.jsx';
       export { default as CheckInModal } from './src/roles/CheckInModal.jsx';
       export { default as PrescriptionBuilder } from './src/roles/PrescriptionBuilder.jsx';
       export { default as SoapConsultationModal } from './src/roles/SoapConsultationModal.jsx';
@@ -393,4 +393,21 @@ for(const [service,reason,title,field] of [
  const html=render(ui.SoapConsultationModal,{...props('vet',db),pet,appt});
  assert.ok(html.includes(title));assert.ok(html.includes(field));assert.match(html,/name="visitAnswer-/);
  if(service==='grooming')assert.match(html,/confirm grooming was performed/);
+});
+
+
+test('vaccination card makes both next care dates prominent and separates the booked visit',()=>{
+ const history={pet:{id:'p1'},events:[{id:'worm',kind:'deworming',vaccine:'Deworming',date:'2026-10-26',nextDue:'2099-01-26'},{id:'rabies',kind:'vaccination',vaccine:'Anti-rabies',date:'2026-10-26',nextDue:'2099-02-26'}]};
+ const html=render(ui.NextPreventiveCare,{history,appointments:[{id:'followup',petId:'p1',service:'deworming',reason:'Deworming Follow-up',date:'2099-01-27',time:'09:00',status:'Scheduled'}],onBook:()=>{}});
+ for(const text of ['Next deworming','Next vaccination','2099-01-26','2099-02-26','Booked visit: 2099-01-27','Book vaccination','No appointment booked for this treatment'])assert.ok(html.includes(text),text);
+ assert.ok(!html.includes('Book deworming'),'Already-booked care should not offer duplicate booking');
+});
+test('My Pets shows correctly labelled deworming and only the owner’s saved transactions',()=>{
+ const db=populated();
+ db.vacc=[{id:'worm',petId:'p1',vaccine:'Deworming',done:true,vetId:'vet',date:'2026-10-26',nextDue:'2099-01-26'}];
+ db.appts=[{id:'paid',petId:'p1',reason:'Recent deworming',status:'Completed',billingStatus:'Paid',amount:250,paidAt:'2026-10-26T01:00:00Z',date:'2026-10-26',time:'09:00',paymentMethod:'Cash'},
+ {id:'private',petId:'foreign-pet',reason:'PRIVATE-FOREIGN-TRANSACTION',status:'Completed',billingStatus:'Paid',amount:9999,date:'2099-01-01'}];
+ const html=render(ui.owner.Dash,props('owner',db));
+ for(const text of ['Next preventive care','Booked visit','Recent transactions','Recent deworming','250.00','View payment'])assert.ok(html.includes(text),text);
+ assert.ok(!html.includes('Next vaccine'));assert.ok(!html.includes('PRIVATE-FOREIGN-TRANSACTION'));
 });

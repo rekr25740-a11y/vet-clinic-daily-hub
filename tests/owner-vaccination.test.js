@@ -77,3 +77,14 @@ test('the earliest active vaccination booking wins without using unrelated routi
   const checkup = { ...earlier, service: 'checkup', reason: 'Routine checkup', date: today };
   assert.equal(nextVaccination('pet1', [dose], [visit, checkup, earlier], today).appointment, earlier);
 });
+
+
+test('deworming bookings and follow-ups remain separate from vaccination dates',()=>{
+ const worm={...dose,id:'worm',vaccine:'Deworming',nextDue:'2026-11-26'};
+ const visit={id:'followup',petId:worm.petId,service:'deworming',reason:'Deworming Follow-up',date:'2026-11-27',time:'09:00',status:'Scheduled'};
+ assert.equal(vaccinationAppointment(worm,[visit],today),visit);
+ assert.equal(nextVaccination(worm.petId,[],[visit],today).appointment,visit);
+ assert.equal(nextVaccination(worm.petId,[worm],[visit],today).matched,worm);
+ assert.equal(vaccinationAppointment(dose,[{...visit,reason:'Anti-rabies'}],today),null);
+ assert.equal(vaccinationAppointment(worm,[{...visit,service:'vaccination',reason:'Deworming'}],today),null);
+});

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { ownerBill } from '../src/ownerBilling.js';
+import { ownerBill, recentTransactions } from '../src/ownerBilling.js';
 const visit={id:'visit1',status:'Pending Approval',billingStatus:'Unpaid',amount:600,invoiceItems:[]};
 const lines=[{name:'Consultation',price:500,qty:1},{name:'Prescribed product',price:125.35,qty:2}];
 
@@ -47,4 +47,16 @@ test('admitted stays await vet approval without presenting an unfinished total a
  assert.deepEqual(ownerBill(a).items,lines,'draft lines are retained');
  assert.equal(ownerBill({...a,admissionStatus:'Ready for discharge'}).status,'Awaiting checkout');
  assert.equal(ownerBill({...a,billingStatus:'Paid',amount:750.7}).amount,750.7,'historical payments remain authoritative');
+});
+
+
+test('recent transactions rank actual payment time, retain completed unpaid visits and omit bookings',()=>{
+ const a={id:'old-visit',date:'2025-01-01',time:'09:00',status:'Completed',billingStatus:'Paid',paidAt:'2026-10-26T04:00:00Z',amount:250};
+ const b={...a,id:'recent-visit',date:'2026-10-26',paidAt:'2026-10-26T03:00:00Z'};
+ const draft={id:'unpaid',date:'2026-10-26',time:'13:00',status:'Completed',billingStatus:'Unpaid',amount:9999};
+ const booking={...draft,id:'booking',status:'Scheduled'};
+ const rows=[b,booking,a,draft],before=structuredClone(rows);
+ assert.deepEqual(recentTransactions(rows).map(a=>a.id),['unpaid','old-visit','recent-visit']);
+ assert.equal(ownerBill(recentTransactions(rows)[0]).amount,null,'Do not turn a booking amount into a bill');
+ assert.deepEqual(recentTransactions(rows,1).map(a=>a.id),['unpaid']);assert.deepEqual(rows,before);
 });

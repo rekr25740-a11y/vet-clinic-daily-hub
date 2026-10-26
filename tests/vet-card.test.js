@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {clinicDocumentErrors,timelineFilterErrors} from '../src/clinicDocumentValidation.js';
-import {eventTitle,filterCardEvents} from '../src/vetCardTimeline.js';
+import {eventTitle,filterCardEvents,cardCareDue} from '../src/vetCardTimeline.js';
 import {clinicRequest} from '../src/clinicApi.js';
 test('clinic details require real contact formats, bounded source and explicit verification',()=>{
  const valid={name:'Synthetic clinic',address:'Synthetic address',phone:'+639170000001',email:'clinic@example.invalid',registration:'TEST-REG',verificationSource:'Synthetic source',confirmed:true};
@@ -35,4 +35,16 @@ test('optional vaccination-card identifiers validate real dates and bounded text
  assert.ok(errors({microchipDate:'2025-02-30',microchipNumber:'Chip'}).microchipDate);
  assert.ok(errors({microchipDate:'2027-01-01',microchipNumber:'Chip'},'2026-10-25').microchipDate);
  assert.ok(errors({microchipDate:'2025-01-01'}).microchipNumber);
+});
+
+
+test('next care uses only latest administrations per family, clears superseded due dates and ignores filters',()=>{
+ const old={id:'old',kind:'vaccination',vaccine:'Anti-rabies',date:'2025-01-01',nextDue:'2026-01-01'};
+ const latest={...old,id:'new',vaccine:'Rabies booster',date:'2026-01-01',nextDue:'2027-01-01'};
+ const worm={id:'worm',kind:'deworming',vaccine:'Deworming',date:'2026-10-26',nextDue:'2026-11-26'};
+ const events=[old,latest,worm,{...worm,id:'plan',kind:'planned',nextDue:'2026-10-01'},{id:'weight',kind:'weight',date:'2026-10-26',value:3}];
+ assert.deepEqual(cardCareDue(events).map(e=>e.id),['worm','new']);
+ assert.deepEqual(cardCareDue([...events,{...latest,id:'last',date:'2026-10-26',nextDue:null}]).map(e=>e.id),['worm']);
+ assert.deepEqual(cardCareDue([{...worm,id:'z-old',createdAt:'2026-10-26T01:00:00Z'},{...worm,id:'a-new',createdAt:'2026-10-26T02:00:00Z',nextDue:null}]),[],'Same-day order uses saved creation time, not random IDs');
+ assert.deepEqual(cardCareDue([]),[]);
 });

@@ -1,7 +1,7 @@
 import { PaginatedList } from "../../components/Pagination.jsx";
 import { useState } from "react";
 import { scope, petName } from "../../lib.jsx";
-import { ownerBill } from "../../ownerBilling.js";
+import { ownerBill, recentTransactions } from "../../ownerBilling.js";
 import { Modal } from "./ui.jsx";
 
 const money = amount => new Intl.NumberFormat("en-PH", {style:"currency", currency:"PHP"}).format(amount);
@@ -56,5 +56,29 @@ export default function OwnerBills({db, me, go}) {
       return <li key={a.id}><div><h4>{petName(db,a.petId)} · {dateLabel(a.date)}</h4><p>{a.reason}</p><b>{a.billingStatus || "Unbilled"}</b><small>{bill.status}</small>{bill.amount !== null && <p>{bill.paid ? "Paid" : "Draft"}: {money(bill.amount)}</p>}</div><button className="btn sm ghost" aria-label={`View ${bill.paid ? "payment" : "bill"} for ${petName(db,a.petId)} on ${dateLabel(a.date)}`} onClick={()=>setOpenId(a.id)}>{bill.paid ? "View payment" : "View bill"}</button></li>;
     })}</PaginatedList>}
     {selected && <Modal title={`${petName(db,selected.petId)} · ${dateLabel(selected.date)}`} onClose={()=>setOpenId(null)}><div className="ow-bill-scroll"><OwnerBillDetails appointment={selected} /></div><div className="row end"><button className="btn" onClick={()=>setOpenId(null)}>Close</button></div></Modal>}
+  </section>;
+}
+
+
+export function RecentTransactions({db,me,go}) {
+  const [openId,setOpenId]=useState(null);
+  const appointments=scope(db,me,'appts');
+  const recent=recentTransactions(appointments);
+  const selected=appointments.find(a=>a.id===openId);
+  return <section className="card ow-bills" aria-label="Recent transactions">
+    <h3>Recent transactions</h3>
+    <p>Your latest care charges and recorded payments.</p>
+    {!recent.length && <p>No transactions yet. Completed visits and payments will appear here.</p>}
+    <ul className="ow-bill-list">{recent.map(a=>{
+      const bill=ownerBill(a);
+      return <li key={a.id}><div>
+        <h4>{petName(db,a.petId)} · {a.reason || 'Clinic visit'}</h4>
+        <small>Visit: {dateLabel(a.date)}</small>
+        <p>{bill.status}{bill.amount!==null ? ` · ${bill.paid?'Paid':'Draft'}: ${money(bill.amount)}` : ''}</p>
+        {bill.paid && <small>Payment recorded: {paidDate(a.paidAt)} · {a.paymentMethod || 'Method not recorded'}</small>}
+      </div><button className="btn sm ghost" onClick={()=>setOpenId(a.id)} aria-label={`View ${bill.paid?'payment':'bill'} for ${petName(db,a.petId)} visit ${a.id}`}>{bill.paid?'View payment':'View bill'}</button></li>;
+    })}</ul>
+    <button className="btn ghost sm" onClick={()=>go('bills')}>View all bills &amp; payments</button>
+    {selected && <Modal title={`${petName(db,selected.petId)} · ${dateLabel(selected.date)}`} onClose={()=>setOpenId(null)}><div className="ow-bill-scroll"><OwnerBillDetails appointment={selected}/></div><div className="row end"><button type="button" className="btn" onClick={()=>setOpenId(null)}>Close</button></div></Modal>}
   </section>;
 }

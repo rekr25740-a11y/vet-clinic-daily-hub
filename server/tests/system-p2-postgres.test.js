@@ -68,11 +68,11 @@ async function historyFixture(){
  await query("INSERT INTO consultations(id,pet_id,vet_id,appt_id,date,symptoms,objective,diagnosis,treatment) VALUES('today','patient-a',$1,'today','2025-01-01','Saved today','Saved vitals','Saved diagnosis','Saved care')",[v.id]);
  fixture={a,b,v,otherVet,assistant,administrator};return fixture;
 }
-test('summaries omit settled history, retain overnight/unpaid/today records and current certified recalls, with full aggregate totals',async()=>{
+test('summaries bound settled history to five owner payments, retain overnight/unpaid/today records and current certified recalls, with full aggregate totals',async()=>{
  const {a,v,assistant,administrator}=await historyFixture();
  for(const actor of [a,v,assistant,administrator]){
   const r=await call('/state/summary',undefined,actor.id);assert.equal(r.status,200,JSON.stringify(r.data));assert.equal(r.data.data.summary,true);const s=r.data.data;
-  assert.ok(s.appts.some(a=>a.id==='overnight'));assert.ok(s.appts.some(a=>a.id==='unpaid'));assert.ok(s.consults.some(c=>c.id==='today' && c.date==='2025-01-01'),'current completed visits retain legitimately backdated saved notes');assert.ok(!s.appts.some(a=>a.id==='history-000'));assert.equal(s.totals.consultations,114);assert.equal(s.vaccs.length,1);assert.equal(s.pets.find(p=>p.id==='patient-a').weights.length,1);
+  assert.ok(s.appts.some(a=>a.id==='overnight'));assert.ok(s.appts.some(a=>a.id==='unpaid'));assert.ok(s.consults.some(c=>c.id==='today' && c.date==='2025-01-01'),'current completed visits retain legitimately backdated saved notes');assert.ok(!s.appts.some(a=>a.id==='history-000'));assert.equal(s.appts.filter(row=>row.id.startsWith('history-')).length,actor===a?5:0);if(actor===a)assert.deepEqual(s.appts.filter(row=>row.id.startsWith('history-')).map(row=>row.id).sort(),['history-108','history-109','history-110','history-111','history-112']);assert.equal(s.totals.consultations,114);assert.equal(s.vaccs.length,1);assert.equal(s.pets.find(p=>p.id==='patient-a').weights.length,1);
   if(actor===a||actor===v)assert.ok(!s.pets.some(p=>p.id==='patient-b'));
  }
 });

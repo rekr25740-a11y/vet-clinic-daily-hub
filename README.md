@@ -837,8 +837,9 @@ schedule calculations do not depend on the browser timezone.
 The UI polls `/api/state/summary`, keeping current/future visits, overnight active
 care, unpaid completed visits, today's collections and linked saved notes (including backdated notes), unresolved followups,
 current vaccine recalls and latest weights. Dashboard totals are computed over
-the complete authorized scope. It does not fetch older notes, settled visits,
-older dose details or weight histories on each poll. Legacy `/api/state` retains
+the complete authorized scope. Owner summaries also include their five most recent
+paid transactions. Other older notes, settled visits, dose details and weight
+histories are not fetched on each poll. Legacy `/api/state` retains
 its complete response contract for existing callers.
 
 `/api/state/history` reads up to 50 primary records per collection per page,
@@ -1520,3 +1521,32 @@ and `npm run build`. The `/tests/browser/auth-checkout.html` fixture uses synthe
 HTTP responses and checks warning/lock feedback, unlock POST, persistent
 countdown, retail-only additions, totals and inline quantity/cash/reference
 validation without sending email or committing a payment.
+
+
+### Owner next care and recent transactions
+
+The vaccination card shows a **Next preventive care** summary above its history,
+including the latest saved next-due dates for deworming and each vaccination
+family. History filters do not hide this summary. The downloaded/printed card
+includes these dates too. A later administration that records no next date
+clears the earlier reminder; same-day records use their saved creation time.
+
+The owner card distinguishes vet-approved due dates from actual booked visits.
+A matching active appointment shows its date and status; otherwise **Book
+deworming** or **Book vaccination** opens the appointment form with that pet,
+treatment and approved due date prefilled within the booking window. It does
+not create a booking until the owner submits the form.
+
+My Pets labels deworming and vaccination together as preventive care and shows
+five recent transactions with saved amounts, payment status and payment-detail
+actions. The owner state summary includes their latest five paid records across
+visit dates, alongside its existing current/unpaid records. The preview ranks
+recorded payment time ahead of the original visit date. Full billing/history
+remains available from **View all bills & payments**. Booking estimates do not
+become transaction amounts, and other owners’ records remain excluded.
+
+Checks: `node --test tests/owner-vaccination.test.js tests/owner-billing.test.js
+tests/vet-card.test.js`, `npm run test:ui`, `npm run test:clinic`,
+`npm run test:system:postgres` and the digital-vet-card PostgreSQL suite with a
+disposable local TEST_DATABASE_URL, `npm run build`, and the synthetic browser
+fixture `/tests/browser/owner-care.html` (`window.ownerCareResult`).

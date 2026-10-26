@@ -20,3 +20,12 @@ export function ownerBill(appointment) {
     mismatch: paid && total !== null && paidAmount !== null && total !== paidAmount
   };
 }
+
+export function recentTransactions(appointments, limit=5) {
+  const timestamp = a => {
+    const paid = a.billingStatus==='Paid' && typeof a.paidAt==='string' && a.paidAt.includes('T') ? Date.parse(a.paidAt) : NaN;
+    return Number.isFinite(paid) ? paid : Date.parse(`${a.date}T${a.time || '00:00'}+08:00`) || 0;
+  };
+  return appointments.filter(a=>a.billingStatus==='Paid' || a.status==='Completed')
+    .sort((a,b)=>timestamp(b)-timestamp(a) || String(b.id).localeCompare(String(a.id))).slice(0,limit);
+}

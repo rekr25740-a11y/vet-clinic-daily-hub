@@ -52,3 +52,7 @@
 .vet-card-document-meta,.vet-card-publication-note{margin-top:20px;padding:14px;background:#fffbeb;border:1px solid #f1d58b;border-radius:9px;font-size:12px;line-height:1.8}.vet-card-document-meta b{color:#1e3a8a}
 @media(prefers-reduced-motion:reduce){.digital-vet-card .vc-flip-card{transition:none}}
 @media(max-width:600px){.vet-card-profile-body,.vet-card-history-body{padding:16px}.digital-vet-card .vc-passport-header{padding:20px}.vet-card-profile-title{flex-wrap:wrap;gap:14px}.vet-card-patient-fields{grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.vet-card-face-controls .btn{width:100%}}
+
+.vet-card-next-care{margin:18px 0;padding:18px;border:1px solid #b8d4f5;border-radius:12px;background:#f0f7ff;color:#183153}
+.vet-card-next-care h4{margin:0 0 12px}.vet-card-next-care article+article{border-top:1px solid #cbdcf0;margin-top:14px;padding-top:14px}
+.vet-card-next-care h5{font-size:15px;margin:0 0 8px}.vet-card-next-care p{margin:6px 0;line-height:1.6}.vet-card-next-care small{display:block;margin-top:14px;line-height:1.6}

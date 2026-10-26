@@ -36,7 +36,7 @@ export async function cardHistory(client,pet){
  const vetName=id=>{const vet=vets.find(v=>v.id===id||v.vet_id===id);return vet?`${vet.first_name} ${vet.last_name}`:'Not recorded';};
  const vaccinations=(await client.query('SELECT * FROM vaccinations WHERE pet_id=$1 AND done=true ORDER BY date,id',[pet.id])).rows
   .filter(v=>!externalReference(v) && !/flea|tick|heartworm|prophylaxis/i.test(`${v.vaccine} ${v.protocol_type || ''}`))
-  .map(v=>({id:v.id,kind:/deworm|parasiticide/i.test(v.vaccine)?'deworming':'vaccination',date:date(v.date),visitId:v.appt_id || null,vaccine:v.vaccine,brand:v.brand || '',manufacturer:v.manufacturer || '',batch:v.batch || '',serialNumber:v.serial_number || '',nextDue:date(v.next_due),vetName:vetName(v.vet_id)}));
+  .map(v=>({id:v.id,kind:/deworm|parasiticide/i.test(v.vaccine)?'deworming':'vaccination',date:date(v.date),createdAt:iso(v.created_at),visitId:v.appt_id || null,vaccine:v.vaccine,brand:v.brand || '',manufacturer:v.manufacturer || '',batch:v.batch || '',serialNumber:v.serial_number || '',nextDue:date(v.next_due),vetName:vetName(v.vet_id)}));
  // Corrections remain in the clinical history; the card uses the current measured weight.
  const weights=(await client.query(`SELECT m.* FROM vital_measurements m WHERE pet_id=$1 AND kind='weight' AND origin='clinic' AND source<>'admission'
   AND NOT EXISTS(SELECT 1 FROM vital_measurements c WHERE c.corrects_id=m.id) ORDER BY measurement_date,id`,[pet.id])).rows

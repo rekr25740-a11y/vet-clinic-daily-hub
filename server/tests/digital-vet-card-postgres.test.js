@@ -110,7 +110,7 @@ test('card JSON and multipage PDF are scoped, include owner contacts and current
  assert.equal(Number((await query("SELECT value FROM vital_measurements WHERE id='weight-0'")).rows[0].value),10,'original measurement retained in clinical history');
  const {text,pages}=await pdfText(f.pet);assert.ok(pages>2);
  for(let i=1;i<225;i++)assert.ok(text.includes(`${10+i/100} kg`),`Missing weight ${i}`);
- for(const phrase of ['Niña Ω','Synthetic vet','Synthetic owner','owner@example.invalid','+639170000001','Home address','Unlinked historical dose','Synthetic dewormer','11.49 kg','Veterinarian signature'])assert.ok(text.includes(phrase),phrase);
+ for(const phrase of ['Niña Ω','Synthetic vet','Synthetic owner','owner@example.invalid','+639170000001','Home address','Unlinked historical dose','Synthetic dewormer','11.49 kg','Veterinarian signature','Next preventive care','Next deworming - Deworming','2025-08-01','Next vaccination - Anti-rabies'])assert.ok(text.includes(phrase),phrase);
  for(const phrase of ['PRIVATE-OBSERVATION-SECRET','PLANNED-NOT-GIVEN','HISTORICAL-PRIVATE-NOTE','Synthetic concern','Synthetic assessment','Synthetic instructions','Official clinic','Publication','Payment','Temperature'])assert.ok(!text.includes(phrase),phrase);
  assert.doesNotMatch(text,/(?:^|\s)44 kg/,'registration weight excluded');
  assert.equal((await publication(f.pet))[0].revision,next.revision,'unchanged download keeps revision');
@@ -145,4 +145,15 @@ test('unverified previous-clinic guide rows are preserved outside the vaccinatio
  assert.ok(!(await card(f.pet)).data.history.events.some(e=>e.id===id));
  assert.equal((await query('SELECT done FROM vaccinations WHERE id=$1',[id])).rows[0].done,true);
  assert.ok(!(await pdfText(f.pet)).text.includes('Previous Rabies Report'));
+});
+
+
+test('next care respects same-day chronology when a later administration clears the next due date',async()=>{
+ const {cardCareDue}=await import('../../src/vetCardTimeline.js');
+ const f=await fixture({vaccinate:false});
+ const older='z_'+crypto.randomUUID(),newer='a_'+crypto.randomUUID();
+ await query("INSERT INTO vaccinations(id,pet_id,card_id,vaccine,date,next_due,done,created_at) VALUES($1,$3,'SYNTHETIC','Deworming',$4,'2099-01-01',true,NOW()-INTERVAL '1 hour'),($2,$3,'SYNTHETIC','Deworming',$4,NULL,true,NOW())",[older,newer,f.pet,clinicClock().date]);
+ const result=await card(f.pet);assert.equal(result.status,200);assert.ok(result.data.history.events.every(e=>e.kind==='weight' || e.createdAt));
+ assert.deepEqual(cardCareDue(result.data.history.events),[]);
+ const {text}=await pdfText(f.pet);assert.ok(text.includes('No next deworming or vaccination date recorded.'));
 });

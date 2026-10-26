@@ -2,7 +2,7 @@ import ExistingClinicRecord from './owner/ExistingClinicRecord.jsx';
 import { isVerifiedPet, needsFirstPetSetup } from '../ownerOnboarding.js';
 import { PaginatedList } from "../components/Pagination.jsx";
 import AdmissionsPage, { AdmissionsSummary } from './AdmissionsPage.jsx';
-import OwnerBills from "./owner/Bills.jsx";
+import OwnerBills, {RecentTransactions} from "./owner/Bills.jsx";
 import { today as bookingToday } from "../booking.js";
 import { currentVaccinationDue, nextVaccination, vaccinationStatus } from "../ownerVaccination.js";
 import CareFollowUps from "./CareFollowUps.jsx";
@@ -56,7 +56,7 @@ function Dash({ db, setDb, me, go, say }) {
         <ul className="ow-hero-stats" aria-label="Summary">
           <li><b>{pets.length}</b><span>{pets.length === 1 ? "Pet" : "Pets"}</span></li>
           <li><b>{upcoming}</b><span>Upcoming {upcoming === 1 ? "visit" : "visits"}</span></li>
-          <li className={dueVacc ? "warn" : ""}><b>{dueVacc}</b><span>{dueVacc === 1 ? "Vaccine" : "Vaccines"} due</span></li>
+          <li className={dueVacc ? "warn" : ""}><b>{dueVacc}</b><span>{dueVacc === 1 ? "Treatment" : "Treatments"} due</span></li>
         </ul>
       )}
       {!pets.length && !reqs.length && (
@@ -77,7 +77,7 @@ function Dash({ db, setDb, me, go, say }) {
       )}
     </section>
 
-    {over.length > 0 && <div className="ow-banner"><Icon n="alert" size={20} /><span><b>Vaccine overdue:</b> {over.map(v => `${petName(db, v.petId)} (${v.vaccine})`).join(", ")}</span><button className="btn sm" onClick={() => go("vacc")}>View records</button></div>}
+    {over.length > 0 && <div className="ow-banner"><Icon n="alert" size={20} /><span><b>Preventive care overdue:</b> {over.map(v => `${petName(db, v.petId)} (${v.vaccine})`).join(", ")}</span><button className="btn sm" onClick={() => go("vacc")}>View records</button></div>}
     <CareFollowUps db={db} go={go} owner />
     <AdmissionsSummary me={me} go={go} />
     <RequestList db={db} setDb={setDb} me={me} say={say} onEdit={r => setModal({ form: true, editing: r })} onBook={book} />
@@ -90,20 +90,21 @@ function Dash({ db, setDb, me, go, say }) {
           <div className="pc-id"><h3>{p.name}</h3><p>{p.breed || p.species}</p></div>
         </div>
         <div className="pc-tags">{p.sex && <span>{p.sex}</span>}{p.weight ? <span>{p.weight} kg</span> : null}{p.birth ? <span>{petAge(p.birth)}</span> : null}</div>
-        <div className="kv pc-vaccine"><span>Next vaccine</span>
+        <div className="kv pc-vaccine"><span>Next preventive care</span>
           {nvAppt ? <>
-            <b>{matched?.vaccine || nvAppt.reason?.replace(/^vaccination\s*[–:-]\s*/i, "") || "Vaccination visit"}</b>
+            <b>{matched?.vaccine || nvAppt.reason?.replace(/^vaccination\s*[–:-]\s*/i, "") || "Preventive care visit"}</b>
             <div className="pc-vaccine-detail"><Icon n="calendar" size={15} /><span>Visit: {nvAppt.date}{nvAppt.time ? ` at ${fmt12(nvAppt.time)}` : " · Time to be confirmed"}</span><Badge v={nvAppt.status} /></div>
-          </> : <b>{nv ? nv.vaccine : "No vaccine scheduled"}</b>}
+          </> : <b>{nv ? nv.vaccine : "No preventive care scheduled"}</b>}
           {nv ? <>
             <div className="pc-vaccine-detail"><span>Vet-approved due: {nv.nextDue}{nvAppt && matched?.id !== nv.id ? ` · ${nv.vaccine}` : ""}</span><Badge v={vaccinationStatus(nv, recalls, TODAY)} /></div>
-            {matched?.id !== nv.id && <small>Contact the clinic to book this vaccine.</small>}
-          </> : <small>{nvAppt ? "Booster date not recorded. Confirm the next dose with your vet at this visit." : "Ask the clinic to confirm the next vaccine and due date."}</small>}
+            {matched?.id !== nv.id && <small>Contact the clinic to book this treatment.</small>}
+          </> : <small>{nvAppt ? nvAppt.service==='deworming' ? "Next deworming due date not recorded. Confirm it with your vet at this visit." : "Booster date not recorded. Confirm the next dose with your vet at this visit." : "Ask the clinic to confirm the next vaccination or deworming date."}</small>}
         </div>
-        <div className="kv"><span>Next visit</span><b>{na ? <>{na.date} {fmt12(na.time)} <Badge v={na.status} /></> : "None booked"}</b></div>
+        <div className="kv"><span>Booked visit</span><b>{na ? <>{na.date} {fmt12(na.time)} <Badge v={na.status} /></> : "None booked"}</b></div>
         <small className="pc-more">View details <Icon n="chevron" size={14} /></small></article>;
     })}</PaginatedList> : null}
     {!pets.length && reqs.length > 0 && <div className="empty sm">Your saved pets are listed above. You can request an appointment while verification is pending.</div>}
+    <RecentTransactions db={db} me={me} go={go}/>
     {modal?.link && <ExistingClinicRecord me={me} onClose={()=>setModal(null)} />}
     {modal && modal.form && <PetFormModal db={db} setDb={setDb} me={me} say={say} editing={modal.editing} onClose={() => setModal(null)} />}
     {modal && modal.profile && <PetProfileModal pet={modal.profile} db={db} setDb={setDb} me={me} onClose={() => setModal(null)} onVacc={() => { pick.petId = modal.profile.id; go("vacc"); }} onBook={(pid, rsn) => book(pid || modal.profile.id, rsn)} />}
@@ -117,7 +118,7 @@ export function FirstPetSetup({db,setDb,me,say,go,onLogout}) {
   return <PetFormModal onExistingRecord={()=>setExisting(true)} requiredSetup db={db} setDb={setDb} me={me} say={say} onLogout={onLogout} onClose={()=>go('home')} />;
 }
 export const owner = { Onboarding:FirstPetSetup, portal: "Pet Owner Portal", Dash, Header: OwnerHeader, menu: [
-  { k: "home", l: "My Pets", s: "Pets", i: "paw", dash: 1, sub: "Your pets, their profiles, next vaccines and visits." },
+  { k: "home", l: "My Pets", s: "Pets", i: "paw", dash: 1, sub: "Your pets, their profiles, next treatments, visits and recent transactions." },
   P("appts", "My Appointments", "calendar", "Book, change or cancel a visit. Switch between the list and the calendar.", OwnerAppts, "Visits"),
   P('admissions', 'Pet Admission Updates', 'hospital', 'Clinic-shared updates during your pet’s stay and discharge instructions.', AdmissionsPage, 'Updates'),
   P("prices", "Services & Prices", "file", "Official clinic service and product prices.", Prices, "Prices"),

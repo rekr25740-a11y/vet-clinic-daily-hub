@@ -1,10 +1,12 @@
+import {vaccinationAppointment,vaccinationStatus,vaccinationBooking} from '../ownerVaccination.js';
+import {fmt12} from './owner/ui.jsx';
 import {useEffect,useRef,useState} from 'react';
 import {api} from '../api.js';
 import {clinicRequest} from '../clinicApi.js';
 import {useFormValidation} from '../components/useFormValidation.jsx';
 import {timelineFilterErrors} from '../clinicDocumentValidation.js';
 import {PaginatedList} from '../components/Pagination.jsx';
-import {filterCardEvents} from '../vetCardTimeline.js';
+import {filterCardEvents,cardCareDue} from '../vetCardTimeline.js';
 import './digital-vet-card.css';
 export function VetCardTimeline({history,filters={}}){
  const events=filterCardEvents(history.events,filters);
@@ -24,7 +26,26 @@ export function VetCardTimeline({history,filters={}}){
   })}
  </>;
 }
-export default function DigitalVetCard({petId,refreshKey,portrait}){
+export function NextPreventiveCare({history,appointments,onBook}) {
+ const due=cardCareDue(history.events);
+ return <section className="vet-card-next-care" aria-label="Next deworming and vaccination">
+  <h4>Next preventive care</h4>
+  {!due.length && <p>No next deworming or vaccination date recorded.</p>}
+  {due.map(event=>{
+   const recall={...event,petId:history.pet.id,done:true};
+   const appointment=appointments && vaccinationAppointment(recall,appointments);
+   const name=event.kind==='deworming'?'deworming':'vaccination';
+   return <article key={event.id}>
+    <h5>Next {name}: {event.vaccine}</h5>
+    <p><b>Vet-approved due: <time dateTime={event.nextDue}>{event.nextDue}</time></b> · {vaccinationStatus(recall,[recall])}</p>
+    {appointments && <p>{appointment ? <>Booked visit: {appointment.date}{appointment.time?` at ${fmt12(appointment.time)}`:''} · {appointment.status}</> : 'No appointment booked for this treatment.'}</p>}
+    {onBook && !appointment && <button type="button" className="btn gold sm" onClick={()=>onBook(vaccinationBooking(recall))}>Book {name}</button>}
+   </article>;
+  })}
+  {!!due.length && <small>A due date is the veterinarian’s recommended return date. A booked visit is shown separately.</small>}
+ </section>;
+}
+export default function DigitalVetCard({petId,refreshKey,portrait,appointments,onBook}){
  const [data,setData]=useState(null),[loading,setLoading]=useState(true),[error,setError]=useState(''),[exporting,setExporting]=useState(false);
  const [flipped,setFlipped]=useState(false);
  const [filters,setFilters]=useState({kind:'',from:'',to:'',query:''});
@@ -61,6 +82,7 @@ export default function DigitalVetCard({petId,refreshKey,portrait}){
   {loading && <p role="status">Loading vaccination card…</p>}
   {error && <p role="alert" className="err">{error}</p>}
   {history && <>
+   <NextPreventiveCare history={history} appointments={appointments} onBook={onBook}/>
    <div className="vet-card-face-controls"><span>Vaccination card</span><button type="button" className="btn gold sm" aria-pressed={flipped} onClick={()=>setFlipped(value=>!value)}>{flipped?'View pet profile':'Flip to vaccination records'} <span aria-hidden="true">↔</span></button></div>
    <div className="vc-flip-stage"><div className={`vc-flip-card${flipped?' is-flipped':''}`}>
     <section className={`vc-page-front${!flipped?' is-active':''}`} aria-label="Pet profile" aria-hidden={flipped} inert={flipped?'':undefined}>

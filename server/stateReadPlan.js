@@ -20,7 +20,11 @@ export function stateReadPlan(user,query={}) {
       reads[key]={sql:`SELECT * FROM ${table} WHERE ${filter} ORDER BY date DESC,id DESC LIMIT ${pageSize+1}`,params:values};
     } else if(summary){
       const day=clinicClock().date;values.push(day);const date=`$${values.length}::date`;
-      if(key==='appts')filter+=` AND (date>=${date} OR status IN ('Pending Approval','Checked-in','In consultation') OR (status='Completed' AND billing_status<>'Paid') OR follow_up_id IN (SELECT c.id FROM consultations c WHERE c.follow_up_date IS NOT NULL AND NOT EXISTS (SELECT 1 FROM appointments linked WHERE linked.follow_up_id=c.id AND linked.status='Completed')) OR (billing_status='Paid' AND paid_at IS NULL) OR (paid_at AT TIME ZONE 'Asia/Manila')::date=${date})`;
+      if(key==='appts') {
+        // My Pets needs five recent paid records even when the visits are older.
+        const recent=owner ? ` OR id IN (SELECT id FROM appointments WHERE ${filters.appts} AND billing_status='Paid' ORDER BY paid_at DESC NULLS LAST,date DESC,id DESC LIMIT 5)` : '';
+        filter+=` AND (date>=${date} OR status IN ('Pending Approval','Checked-in','In consultation') OR (status='Completed' AND billing_status<>'Paid') OR follow_up_id IN (SELECT c.id FROM consultations c WHERE c.follow_up_date IS NOT NULL AND NOT EXISTS (SELECT 1 FROM appointments linked WHERE linked.follow_up_id=c.id AND linked.status='Completed')) OR (billing_status='Paid' AND paid_at IS NULL) OR (paid_at AT TIME ZONE 'Asia/Manila')::date=${date}${recent})`;
+      }
       if(key==='consults')filter+=` AND (date>=${date} OR appt_id IN (SELECT id FROM appointments WHERE date>=${date} OR status IN ('Pending Approval','Checked-in','In consultation') OR (status='Completed' AND billing_status<>'Paid')) OR (follow_up_date IS NOT NULL AND NOT EXISTS (SELECT 1 FROM appointments linked WHERE linked.follow_up_id=consultations.id AND linked.status='Completed')))`;
       // Latest dose in each clinical family preserves recall semantics; current doses preserve today's EMR.
       if(key==='vaccs') {

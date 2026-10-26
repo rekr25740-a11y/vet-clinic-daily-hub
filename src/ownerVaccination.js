@@ -19,7 +19,7 @@ export function vaccinationAppointment(record, appointments, date = today()) {
   return appointments.filter(a => a.petId === record.petId && a.date >= date &&
     ['Pending Approval', 'Scheduled', 'Checked-in', 'In consultation'].includes(a.status) &&
     (!a.service || ['vaccination', 'deworming'].includes(a.service)) &&
-    vaccineFamily((a.reason || '').replace(/^(vaccination|deworming)\s*[–:-]\s*/i, '')) === vaccineFamily(record.vaccine))
+    (/deworm/i.test(record.vaccine) ? (a.service==='deworming' || !a.service && /deworm/i.test(a.reason || '')) : a.service!=='deworming' && vaccineFamily((a.reason || '').replace(/^vaccination\s*[–:-]\s*/i, '')) === vaccineFamily(record.vaccine)))
     .sort((a, b) => `${a.date}${a.time}`.localeCompare(`${b.date}${b.time}`))[0] || null;
 }
 
@@ -32,7 +32,7 @@ export function nextVaccination(petId, records, appointments, date = today()) {
   const visits = appointments.filter(a => a.petId === petId && a.date >= date &&
     ['Pending Approval', 'Scheduled', 'Checked-in', 'In consultation'].includes(a.status));
   const appointment = visits
-    .filter(a => a.service === 'vaccination' || (!a.service && /^vaccination\s*[–:-]/i.test(a.reason || '')) || recalls.some(v => vaccinationAppointment(v, [a], date)))
+    .filter(a => ['vaccination','deworming'].includes(a.service) || (!a.service && /^(?:vaccination|deworming)\s*[–:-]/i.test(a.reason || '')) || recalls.some(v => vaccinationAppointment(v, [a], date)))
     .sort((a, b) => `${a.date}${a.time || ''}`.localeCompare(`${b.date}${b.time || ''}`))[0] || null;
   const matched = appointment ? recalls.find(v => vaccinationAppointment(v, [appointment], date)) || null : null;
   return { recall, appointment, matched };

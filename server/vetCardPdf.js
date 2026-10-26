@@ -1,3 +1,4 @@
+import {cardCareDue} from '../src/vetCardTimeline.js';
 import PDFDocument from 'pdfkit';
 import {fileURLToPath} from 'node:url';
 export async function vetCardPdf(document){
@@ -14,6 +15,11 @@ export async function vetCardPdf(document){
  if(pet.microchipNumber){line('Microchip number',pet.microchipNumber);line('Implantation / scan date',pet.microchipDate);}
  heading('Owner information');
  for(const [label,key] of [['Full name','name'],['Home address','address'],['Contact number','phone'],['Email address','email']])line(label,owner[key]);
+ heading('Next preventive care');
+ const due=cardCareDue(snapshot.events);
+ if(!due.length)pdf.text('No next deworming or vaccination date recorded.');
+ for(const event of due)line(`Next ${event.kind==='deworming'?'deworming':'vaccination'} - ${event.vaccine}`,event.nextDue);
+ if(due.length)pdf.text('Vet-approved due dates. Contact the clinic to arrange your appointment.');
  for(const [kind,title] of [['vaccination','Vaccinations'],['deworming','Deworming history'],['weight','Weight per visit']]){
   heading(title);
   const events=snapshot.events.filter(e=>e.kind===kind);

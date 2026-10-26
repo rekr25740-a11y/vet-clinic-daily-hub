@@ -1458,3 +1458,26 @@ Manila by default), with month-end clamping. Historical care uses its actual
 care date. These are European guideline-based suggestions, not a universal
 Philippine protocol or a product dose instruction; the vet approves or customizes
 for the patient/product. Existing draft intervals are preserved as custom.
+
+### Care planning and calculation by visit reason
+
+Consultations offer care-plan choices for wellness, skin/ear, mobility/injury,
+digestive, appetite, dental, surgical, urgent and follow-up visits. Choosing a
+plan adds its intended care text to the clinical record; it does not assert that
+a service was performed. Patient-specific instructions remain editable. Matching
+services appear first; other clinical services remain available in a collapsed
+section. Selected service charges are totalled automatically.
+
+An optional symptom-start date calculates elapsed days at the care date. A
+recheck interval calculates the follow-up date from that same care date; the
+existing rule still rejects follow-up dates before today. Changing a preset
+clears obsolete inline errors. These calculations do not choose a diagnosis,
+medicine dose or clinically appropriate recheck interval.
+
+Deworming saves may now omit an unavailable manufacturer lot. The server fills
+an available configured lot when a catalog product is selected, and rejects
+expired or mismatched configured lots. Missing lots stay empty and appear as
+“Not recorded” in review. The automatically generated administration ID is shown
+separately as the record reference; it is never written into the lot field.
+Vaccination still requires the actual lot. This replaces the earlier requirement
+that every deworming save include a lot, without changing existing recorded lots.

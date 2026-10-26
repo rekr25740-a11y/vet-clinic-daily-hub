@@ -1,3 +1,4 @@
+import {careForProfile,elapsedDays,calculatedFollowUp} from '../visitCare.js';
 import {dewormingSchedule,availableDewormingLots,DEWORMING_REFERENCE} from '../dewormingSchedule.js';
 import {visitProfile,visitFormType,initialVaccineForVisit,serviceMatchesVisit,intakeSummary,visitClinicalFields} from '../visitForm.js';
 import {ExternalHistorySummary} from '../components/ExternalHistory.jsx';
@@ -56,6 +57,7 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
   const formType=visitFormType(appt), consultation=formType==='consultation', preventive=['vaccination','deworming'].includes(formType);
   const profile=visitProfile(appt);
   const formTitle=profile.title;
+  const careOptions=careForProfile(profile);
   const inFlight=useRef(false),consultationId=useRef(uid()),vaccinationId=useRef("v"+uid());
   const [tab, setTab] = useState("soap"); // 'soap' | 'emr'
   const owner = db.owners.find(o => o.id === pet.ownerId) || {};
@@ -68,7 +70,7 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
   const triageRemark = iv?.triageLevel && iv.triageLevel !== "Routine" ? ` [TRIAGE: ${iv.triageLevel.toUpperCase()}]` : "";
 
   const initialForm = {
-    date: TODAY,backdateReason:"",visitAnswers:{},
+    date: TODAY,backdateReason:"",visitAnswers:{},symptomStart:"",carePlanChoice:"",
     symptoms: appt?.reason ? `Chief Complaint: ${appt.reason}${triageRemark}` : "",
     objective: "",
     diagnosis: "",
@@ -155,13 +157,16 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
     if(k==='scheduleFollowUp' && !v) for(const field of ['careStatus','followUpDate','followUpReason']) validation.changed(field);
     setF({...f,[k]:v,...(["date","vaccine","intervalDays","brand","batch","doseNo","doseOf","dewormingWeaned","dewormingMonthlyRisk","dewormingManual"].includes(k) ? {scheduleApproved:false} : {})});
     if(['date','vaccine','intervalDays','brand','batch','doseNo','doseOf','dewormingWeaned','dewormingMonthlyRisk','dewormingManual'].includes(k) && f.giveVaccine) validation.changed('scheduleApproved');
+    if(k==='scheduleFollowUp' && v && f.followUpDays) {validation.changed('followUpDate');setF(previous=>({...previous,followUpDate:calculatedFollowUp(previous.date,previous.followUpDays)}));}
+    if(k==='date' && f.scheduleFollowUp && f.followUpDays) {validation.changed('followUpDate');validation.changed('symptomStart');setF(previous=>({...previous,followUpDate:calculatedFollowUp(v,previous.followUpDays)}));}
     if(k==='microchipDate') validation.changed('microchipNumber');
     if(k==='doseNo') validation.changed('doseOf');
     if(k==='prescription')setActionErrors(previous=>({...previous,prescription:''}));
   };
   const handleFollowUpDaysChange = days => {
+    validation.changed('followUpDays');
     validation.changed('followUpDate');
-    setF(previous=>({...previous,followUpDays:String(days),followUpDate:plus(days)}));
+    setF(previous=>({...previous,followUpDays:String(days),followUpDate:calculatedFollowUp(f.date,days)}));
   };
 
   const [loading, setLoading] = useState(false);
@@ -219,6 +224,7 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
         vaccine: f.vaccine,
         brand: f.brand.trim(),
         batch: f.batch.trim(),
+        ...(formType==='deworming' && selectedProduct ? {dewormingProductId:selectedProduct.id} : {}),
         manufacturer:(f.manufacturer || "").trim(),serialNumber:(f.serialNumber || "").trim(),
         date: f.date,
         nextDue: boosterDue,
@@ -253,7 +259,7 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
         ["Prescribed products",selectedItems.map(p=>`${p.name} × ${p.quantity} — ${p.instructions}`).join("\n") || "None selected"]] : []),
         ["Performed services",serviceCatalog.filter(p=>selectedServices.includes(p.id) || (f.giveVaccine && p.id === VACCINE_SERVICE[f.vaccine])).map(p=>`${p.name} — ₱${p.price.toLocaleString()}`).join("\n") || "None selected"],
         ...(preventive && f.microchipNumber ? [["Microchip",`${f.microchipNumber} · ${f.microchipDate || 'Date not recorded'}`]] : []),
-        ...(preventive ? [[formType==='deworming' ? "Deworming administration" : "Vaccine administration",newVacc ? `${newVacc.vaccine} — ${newVacc.brand}\nManufacturer: ${newVacc.manufacturer || 'Not recorded'} · Serial: ${newVacc.serialNumber || 'Not recorded'}\nBatch: ${newVacc.batch} · Dose ${newVacc.doseNo} of ${newVacc.doseOf}\nApproved booster due: ${newVacc.nextDue}\n${newVacc.notes}` : "No administration recorded"]] : []),
+        ...(preventive ? [[formType==='deworming' ? "Deworming administration" : "Vaccine administration",newVacc ? `${newVacc.vaccine} — ${newVacc.brand}\nManufacturer: ${newVacc.manufacturer || 'Not recorded'} · Serial: ${newVacc.serialNumber || 'Not recorded'}\nBatch: ${newVacc.batch || 'Not recorded'} · Record reference: ${newVacc.id} · Dose ${newVacc.doseNo} of ${newVacc.doseOf}\nApproved booster due: ${newVacc.nextDue}\n${newVacc.notes}` : "No administration recorded"]] : []),
         ...(consultation ? [["Care status",newRecord.careStatus],
         ["Follow-up",newRecord.followUpDate ? `${newRecord.followUpDate}: ${newRecord.followUpReason}` : "No follow-up requested"]] : [])]
     })) return;
@@ -432,6 +438,11 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
             <section aria-label="Visit-specific history" className="ow-note">
               <h4>{profile.title} · visit details</h4>
               <p>Optional details are included in this visit's history automatically.</p>
+              {consultation && careOptions.onset && <div className="fld"><label htmlFor="symptom-start">Symptoms started (optional)</label>
+                <input id="symptom-start" name="symptomStart" type="date" min={pet.birth} max={f.date} value={f.symptomStart || ''} onChange={e=>set('symptomStart',e.target.value)} aria-invalid={!!errs.symptomStart} aria-describedby="symptom-start-error"/>
+                <span id="symptom-start-error" className="err" aria-live="polite">{errs.symptomStart}</span>
+                {elapsedDays(f.symptomStart,f.date)!==null && <p role="status">Duration at this visit: {elapsedDays(f.symptomStart,f.date)} day(s)</p>}
+              </div>}
               {profile.fields.map(({key,label}) => <div className="fld" key={key}>
                 <label htmlFor={`visitAnswer-${key}`}>{label}</label>
                 <textarea id={`visitAnswer-${key}`} name={`visitAnswer-${key}`} rows={2} value={f.visitAnswers?.[key] || ''}
@@ -544,7 +555,13 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
               </div>
 
               <div className="fld full" style={{ gridColumn: "1/-1" }}>
-                <label htmlFor="soap-treatment"><b>{consultation ? 'P - Plan (Treatment & In-Clinic Procedures)' : careConfirmed ? 'Additional care / after-care instructions (optional)' : 'Care provided / after-care instructions'}</b>{!careConfirmed && <i> *</i>}</label>
+                {consultation && <div className="fld"><label htmlFor="care-plan-choice">Care plan for {profile.title} (optional)</label>
+                  <select id="care-plan-choice" name="carePlanChoice" value={f.carePlanChoice || ''} onChange={e=>{set('carePlanChoice',e.target.value);validation.changed('treatment');}} aria-invalid={!!errs.carePlanChoice} aria-describedby="care-plan-choice-error">
+                    <option value="">Write a custom plan below</option>{careOptions.plans.map(plan=><option key={plan}>{plan}</option>)}
+                  </select><span id="care-plan-choice-error" className="err" aria-live="polite">{errs.carePlanChoice}</span>
+                  <p>The selected plan is added to this record. Add patient-specific directions below.</p>
+                </div>}
+                <label htmlFor="soap-treatment"><b>{consultation ? f.carePlanChoice ? 'Additional plan / instructions (optional)' : 'P - Plan (Treatment & In-Clinic Procedures)' : careConfirmed ? 'Additional care / after-care instructions (optional)' : 'Care provided / after-care instructions'}</b>{!careConfirmed && !(consultation && f.carePlanChoice) && <i> *</i>}</label>
                 {consultation && <NoteShortcuts field="treatment" label="Treatment suggestions" options={noteOptions.treatment} value={f.treatment} onChange={value => set("treatment", value)} />}
                 <p id="soap-treatment-hint" className="soap-note-label">{careConfirmed ? 'Confirmed care and its date are added automatically, including the next due date when applicable. Add patient-specific instructions if needed.' : 'Enter your treatment plan and patient-specific instructions here. Review and edit any added text for this patient.'}</p>
                   <textarea
@@ -581,10 +598,14 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
               </section>}
 
               {consultation && <fieldset style={{gridColumn:"1/-1"}}><legend>Confirm services performed</legend>
-                <p>Select only services actually performed. Each selection is added to billing once at the fixed clinic price. The choices below match the reason for this visit.</p>
-                {catalogError ? <p role="alert">{catalogError} <button type="button" onClick={() => retryCatalog(n => n + 1)}>Retry prices</button></p> : !serviceCatalog.length ? <p>Loading services…</p> : relevantServices.map(p => {
-                  return <label key={p.id} className="service-check"><input type="checkbox" checked={selectedServices.includes(p.id)} onChange={e => {const checked=e.target.checked;setPerformedServices(prev => checked ? [...prev,p.id] : prev.filter(id => id !== p.id));}} /> {p.name} · ₱{p.price.toLocaleString()}</label>;
-                })}
+                <p>Confirm services actually performed. Matching services appear first.</p>
+                {catalogError ? <p role="alert">{catalogError} <button type="button" onClick={() => retryCatalog(n => n + 1)}>Retry prices</button></p> : !serviceCatalog.length ? <p>Loading services…</p> : <>
+                  {relevantServices.filter(p=>careOptions.services.includes(p.id)).map(p=><label key={p.id} className="service-check"><input type="checkbox" checked={selectedServices.includes(p.id)} onChange={e=>{const checked=e.target.checked;setPerformedServices(previous=>checked?[...new Set([...previous,p.id])]:previous.filter(id=>id!==p.id));}}/>{p.name} · ₱{p.price.toLocaleString()}</label>)}
+                  <details open={selectedServices.some(id=>!careOptions.services.includes(id)) ? true : undefined}><summary>Other clinical services</summary>
+                    {relevantServices.filter(p=>!careOptions.services.includes(p.id)).map(p=><label key={p.id} className="service-check"><input type="checkbox" checked={selectedServices.includes(p.id)} onChange={e=>{const checked=e.target.checked;setPerformedServices(previous=>checked?[...new Set([...previous,p.id])]:previous.filter(id=>id!==p.id));}}/>{p.name} · ₱{p.price.toLocaleString()}</label>)}
+                  </details>
+                </>}
+                <p>Selected service total: ₱{relevantServices.filter(p=>selectedServices.includes(p.id)).reduce((total,p)=>total+p.price,0).toLocaleString()}</p>
               </fieldset>}
               {consultation && <div style={{gridColumn: "1/-1"}}><PrescriptionBuilder items={prescriptionItems} onChange={items=>{setPrescriptionItems(items);setActionErrors(previous=>({...previous,prescription:''}));}} notes={f.prescription} onNotes={v => set("prescription", v)} error={errs.prescription} /></div>}
 
@@ -653,11 +674,12 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
                     </div>
 
                     <div className="fld">
-                      <label htmlFor="soap-batch">Batch / Lot Number</label>
+                      <label htmlFor="soap-batch">Batch / Lot Number{formType==='deworming' && !availableLots.length ? ' (optional)' : ''}</label>
                       {formType==='deworming' && availableLots.length ? <select id="soap-batch" name="batch" value={f.batch} onChange={e=>set('batch',e.target.value)} aria-invalid={!!errs.batch} aria-describedby="soap-batch-error">
                         {availableLots.map(l=><option key={l.batch} value={l.batch}>{l.batch} · expires {l.expiresOn}</option>)}
                       </select> : <input type="text" id="soap-batch" name="batch" maxLength={60} value={f.batch} onChange={e=>set('batch',e.target.value)} aria-invalid={!!errs.batch} aria-describedby="soap-batch-error"/>}
 
+                      {formType==='deworming' && <small>Administration reference: {vaccinationId.current}</small>}
                       {errs.batch && <span id="soap-batch-error" className="err" aria-live="polite">{errs.batch}</span>}
                     </div>
                     {formType==='vaccination' && [['manufacturer','Manufacturer (optional)'],['serialNumber','Serial number (optional)']].map(([key,label])=><div className="fld" key={key}><label htmlFor={`soap-${key}`}>{label}</label><input id={`soap-${key}`} name={key} value={f[key] || ''} onChange={e=>set(key,e.target.value)} maxLength={100} aria-invalid={!!errs[key]} aria-describedby={`soap-${key}-error`}/>{errs[key] && <span id={`soap-${key}-error`} className="err" aria-live="polite">{errs[key]}</span>}</div>)}
@@ -687,6 +709,9 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
                   <div style={{ marginTop: "12px" }}>
                     <label>Care status <select aria-describedby="soap-careStatus-error" aria-invalid={!!errs.careStatus} name="careStatus" value={f.careStatus} onChange={e => set("careStatus", e.target.value)}><option>Follow-up required</option><option>Recheck required</option></select></label>
                     {errs.careStatus && <p id="soap-careStatus-error" className="err" role="alert">{errs.careStatus}</p>}
+                    <label>Recheck after (days)<input type="number" name="followUpDays" min="1" max="3650" step="1" value={f.followUpDays} onChange={e=>{validation.changed('followUpDays');handleFollowUpDaysChange(e.target.value);}} aria-invalid={!!errs.followUpDays} aria-describedby="followUpDays-error"/></label>
+                    <span id="followUpDays-error" className="err" aria-live="polite">{errs.followUpDays}</span>
+                    <p>Calculated from the care date: {f.date}.</p>
                     <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginBottom: "10px" }}>
                       {[
                         { label: "In 3 Days", days: 3 },

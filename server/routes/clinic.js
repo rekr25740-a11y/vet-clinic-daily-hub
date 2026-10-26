@@ -1,3 +1,4 @@
+import {resolveAdministrationLot} from '../administrationLot.js';
 import {dewormingProducts} from '../dewormingProducts.js';
 import {ownerAccountLinkRouter} from './ownerAccountLink.js';
 import {resolveWalkInOwner} from '../walkInOwner.js';
@@ -1822,7 +1823,9 @@ clinicRouter.delete("/vaccinations/:id", async (req, res) => {
 
 /* 7. CONSULTATIONS (SOAP MEDICAL NOTES) */
 clinicRouter.post("/consultations", async (req, res) => {
-  const { id, petId, apptId, date, symptoms, objective, diagnosis, treatment, prescription, vaccination, weight } = req.body;
+  const { id, petId, apptId, date, symptoms, objective, diagnosis, treatment, prescription, weight } = req.body;
+  let vaccination=req.body.vaccination;
+  try { vaccination=resolveAdministrationLot(vaccination,date); } catch(error) {return res.status(error.status || 500).json({error:error.status ? error.message : "Unable to load deworming products."});}
   const cardFieldErrors=vaccinationCardFieldErrors({...vaccination,...(req.body.microchip?{microchipNumber:req.body.microchip.number,microchipDate:req.body.microchip.date}:{})},clinicClock().date);
   if(Object.keys(cardFieldErrors).length)return res.status(400).json({error:Object.values(cardFieldErrors)[0],errors:cardFieldErrors});
   if(req.body.microchip && (typeof req.body.microchip.number!=='string' || !req.body.microchip.number.trim()))return res.status(400).json({error:'Enter the microchip number.'});
@@ -1834,7 +1837,7 @@ clinicRouter.post("/consultations", async (req, res) => {
   if (required.some(v => typeof v !== "string" || !v.trim() || v.length > 10000) || typeof prescription !== "string" || prescription.length > 3000 || !/^\d{4}-\d{2}-\d{2}$/.test(date || "")) {
     return res.status(400).json({ error: "Complete the SOAP fields and enter a valid consultation date." });
   }
-  if (vaccination && [vaccination.vaccine, vaccination.brand, vaccination.batch].some(v => typeof v !== "string" || !v.trim())) return res.status(400).json({ error: "Vaccine, brand and lot/batch are required." });
+  if (vaccination && [vaccination.vaccine, vaccination.brand,...(vaccination.vaccine==='Deworming'?[]:[vaccination.batch])].some(v => typeof v !== "string" || !v.trim())) return res.status(400).json({ error: "Vaccine, brand and lot/batch are required." });
   if (vaccination?.nextDue && (!/^\d{4}-\d{2}-\d{2}$/.test(vaccination.nextDue) || vaccination.nextDue <= date)) return res.status(400).json({ error: "The booster date must follow the vaccination date." });
   if (weight !== undefined && (typeof weight !== "number" || !Number.isFinite(weight) || weight <= 0 || weight > 120)) return res.status(400).json({ error: "Enter a valid weight." });
   try {

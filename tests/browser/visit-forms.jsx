@@ -43,6 +43,15 @@ async function run(){
   await edit('weight','5');assert(field('weight').getAttribute('aria-invalid')==='false','Weight correction must clear');
   await edit('diagnosis',' ');assert(field('diagnosis').getAttribute('aria-invalid')==='true','Consultation requires assessment');
   await edit('diagnosis','Recorded findings');assert(field('diagnosis').getAttribute('aria-invalid')==='false','Assessment correction must clear');
+  await edit('symptomStart',new Date(Date.parse(today())-2*86400000).toISOString().slice(0,10));
+  assert(document.body.textContent.includes('Duration at this visit: 2 day(s)'),'Symptom duration must calculate');
+  await edit('carePlanChoice',field('carePlanChoice').options[1].value);
+  await edit('treatment','');assert(field('treatment').getAttribute('aria-invalid')==='false','Selected reason-specific plan must populate durable care');
+  await toggle('scheduleFollowUp');await edit('followUpDays','10');
+  assert(field('followUpDate').value===new Date(Date.parse(today())+10*86400000).toISOString().slice(0,10),'Follow-up interval must calculate date');
+  await edit('followUpDays','0');assert(field('followUpDays').getAttribute('aria-invalid')==='true','Invalid recheck interval must show inline');
+  flushSync(()=>[...document.querySelectorAll('button')].find(b=>b.textContent.includes('In 7 Days')).click());await frame();
+  assert(field('followUpDays').getAttribute('aria-invalid')==='false','A preset must clear the previous native interval error');
   await mount('vaccination','Vaccination: Anti-rabies');
   await toggle('giveVaccine');
   await edit('diagnosis','');await edit('treatment','');
@@ -71,7 +80,7 @@ async function run(){
   await toggle('scheduleApproved');assert(field('scheduleApproved').checked,'Calculated schedule still accepts vet approval');
   await toggle('dewormingManual');await edit('intervalDays','21');assert(!field('scheduleApproved').checked,'Manual change must invalidate approval');
   await toggle('giveVaccine');assert(field('diagnosis').closest('details').open,'Deferred care must expose notes');
-  return {passed:true,checks:['live history limits','draft recovery','live weight and assessment','vaccination documentation','due-date calculation','approval invalidation','series validation','grooming confirmation and deferral','collapsed confirmed-care notes','automatic deworming schedule','configured product lot autofill','expired lot exclusion']};
+  return {passed:true,checks:['live history limits','draft recovery','live weight and assessment','vaccination documentation','due-date calculation','approval invalidation','series validation','grooming confirmation and deferral','collapsed confirmed-care notes','automatic deworming schedule','configured product lot autofill','expired lot exclusion','reason-specific care plan','symptom duration','follow-up calculation']};
  }finally{flushSync(()=>root.unmount());api.get=originalGet;api.post=originalPost;for(const key of keys)localStorage.removeItem(key);}
 }
 window.visitFormResult=run().then(result=>{document.getElementById('results').textContent=JSON.stringify(result,null,2);return result;}).catch(error=>{document.getElementById('results').textContent=error.stack;throw error;});

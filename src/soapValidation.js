@@ -1,3 +1,4 @@
+import {elapsedDays} from './visitCare.js';
 import {vaccinationCardFieldErrors} from './vaccinationCardFields.js';
 import {boosterDate} from './clinicalWorkflow.js';
 // Match the consultation endpoint's SOAP, date and weight limits before sending.
@@ -18,6 +19,9 @@ export function validateSoapFields(form, today, birth, visitDate) {
     errors.weight = 'Enter a weight greater than 0 and no more than 120 kg, or leave it blank.';
   }
   for(const [key,value] of Object.entries(form.visitAnswers || {})) if(typeof value!=='string' || value.length>500) errors[`visitAnswer-${key}`]='Use no more than 500 characters.';
+  if(form.symptomStart && (elapsedDays(form.symptomStart,form.date)===null || birth && form.symptomStart<birth)) errors.symptomStart='Enter an onset date between birth and the care date.';
+  if(form.carePlanInvalid) errors.carePlanChoice='Choose a care plan for this visit reason.';
+  if(form.scheduleFollowUp && form.followUpDays && !boosterDate(form.date,form.followUpDays)) errors.followUpDays='Enter a whole interval from 1 to 3,650 days.';
   if (String(form.prescription || '').length > 3000) errors.prescription = 'Prescription notes cannot exceed 3,000 characters.';
   if (form.giveVaccine) {
     for(const [field,label] of [['brand','Product brand'],['batch','Batch / lot']]) if(String(form[field] || '').length>60) errors[field]=`${label} cannot exceed 60 characters.`;
@@ -27,7 +31,7 @@ export function validateSoapFields(form, today, birth, visitDate) {
     if (!boosterDate(form.date,form.intervalDays)) errors.intervalDays='Enter a whole booster interval from 1 to 3,650 days and a valid administration date.';
     if (!form.scheduleApproved) errors.scheduleApproved='Approve the booster interval for this patient.';
     if (!String(form.brand || '').trim()) errors.brand='Vaccine manufacturer brand name is required.';
-    if (!String(form.batch || '').trim()) errors.batch='Lot / Batch number is required for official certification.';
+    if (form.vaccine!=='Deworming' && !String(form.batch || '').trim()) errors.batch='Lot / Batch number is required for official certification.';
   }
   if (form.scheduleFollowUp) {
     if (!['Follow-up required','Recheck required'].includes(form.careStatus)) errors.careStatus = 'Choose a supported follow-up status.';

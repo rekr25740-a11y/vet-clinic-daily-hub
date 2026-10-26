@@ -1,3 +1,4 @@
+import {careForProfile,elapsedDays} from './visitCare.js';
 import {profileForVisit} from './visitProfiles.js';
 import {VACCINE_CHOICES,vaccineIdFromReason} from './vaccineBooking.js';
 import { serviceOf } from './booking.js';
@@ -29,6 +30,9 @@ export function visitClinicalFields(form, appointment, performedServices = []) {
   const summary = intakeSummary(appointment.intakeVitals);
   const notes = (form.objective || '').trim();
   const profile=visitProfile(appointment);
+  const careOptions=careForProfile(profile);
+  const selectedPlan=consultation && careOptions.plans.includes(form.carePlanChoice) ? form.carePlanChoice : '';
+  const duration=careOptions.onset ? elapsedDays(form.symptomStart,form.date) : null;
   const answers=Object.fromEntries(profile.fields.map(({key})=>[key,form.visitAnswers?.[key] ?? '']));
   const history=profile.fields.filter(({key})=>typeof answers[key]==='string' && answers[key].trim()).map(({key,label})=>`${label}: ${answers[key].trim()}`).join('\n');
   const preventive=['vaccination','deworming'].includes(type);
@@ -36,13 +40,15 @@ export function visitClinicalFields(form, appointment, performedServices = []) {
   const care=type==='deworming' ? 'Deworming' : type==='vaccination' ? (form.vaccine || 'Vaccination') : 'Grooming';
   return {...form,
     visitAnswers:answers,
+    symptomStart:careOptions.onset ? form.symptomStart : '',
+    carePlanInvalid:consultation && !!form.carePlanChoice && !selectedPlan,
     diagnosis:confirmed ? [`Veterinarian confirmed suitability for ${type}.`,form.diagnosis].filter(Boolean).join('\n') : form.diagnosis,
     treatment:confirmed ? [
       `${care} ${preventive ? 'administered' : 'provided'} on ${form.date}${preventive && form.brand?.trim() ? ` using ${form.brand.trim()}` : ''}.`,
       preventive && boosterDate(form.date,form.intervalDays) ? `Next ${type} due ${boosterDate(form.date,form.intervalDays)} (${form.intervalDays} days after administration).` : '',
       form.treatment,
-    ].filter(Boolean).join('\n') : form.treatment,
-    symptoms:[consultation ? form.symptoms : `Reason for visit: ${appointment.reason || visitFormTitle(type)}`,history].filter(Boolean).join('\n'),
+    ].filter(Boolean).join('\n') : [selectedPlan,form.treatment].filter(Boolean).join('\n'),
+    symptoms:[consultation ? form.symptoms : `Reason for visit: ${appointment.reason || visitFormTitle(type)}`,history,duration!==null ? `Symptoms began ${form.symptomStart} (${duration} day(s) before this visit).` : ''].filter(Boolean).join('\n'),
     objective:notes.startsWith(summary) ? notes : [summary,notes].filter(Boolean).join('\n'),
     giveVaccine:['vaccination','deworming'].includes(type) && form.giveVaccine,
     scheduleFollowUp:consultation && form.scheduleFollowUp,

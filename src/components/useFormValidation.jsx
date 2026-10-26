@@ -35,7 +35,9 @@ export function useFormValidation(errors) {
   // Input also fires for incomplete number edits (for example '-' or '1e')
   // when the browser value remains '' and React does not dispatch onChange.
   // Handle input during bubbling so controlled values update before validation renders.
-  const formProps = {noValidate:true,onInput:edited,onChange:edited};
+  // Selects commit their controlled value on change, after the native input
+  // event. Rendering validation on input restores the old selected option.
+  const formProps = {noValidate:true,onInput:event=>{if(event.target.tagName!=='SELECT')edited(event);},onChange:edited};
   // Call after assigning a value with a preset or other programmatic edit.
   const changed = key => {
     touch(key);

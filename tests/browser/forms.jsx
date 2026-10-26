@@ -17,8 +17,9 @@ async function edit(name,value) {
   const prototype=control instanceof HTMLSelectElement ? HTMLSelectElement.prototype : control instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
   flushSync(()=>{
     Object.getOwnPropertyDescriptor(prototype,'value').set.call(control,value);
-    control.dispatchEvent(new Event(control instanceof HTMLSelectElement ? 'change' : 'input',{bubbles:true}));
+    control.dispatchEvent(new Event('input',{bubbles:true}));
   });
+  if(control instanceof HTMLSelectElement)flushSync(()=>control.dispatchEvent(new Event('change',{bubbles:true})));
   await frame();
 }
 async function submit(){flushSync(()=>document.querySelector('form').requestSubmit());await frame();}

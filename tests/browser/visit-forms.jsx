@@ -15,7 +15,9 @@ const keys=new Set();let mountCount=0;
 async function edit(name,value){
  const control=field(name);assert(control,`Missing ${name}`);
  const proto=control instanceof HTMLSelectElement?HTMLSelectElement.prototype:control instanceof HTMLTextAreaElement?HTMLTextAreaElement.prototype:HTMLInputElement.prototype;
- flushSync(()=>{Object.getOwnPropertyDescriptor(proto,'value').set.call(control,value);control.dispatchEvent(new Event(control instanceof HTMLSelectElement?'change':'input',{bubbles:true}));});
+ // Native selects dispatch input before change; React may render between them.
+ flushSync(()=>{Object.getOwnPropertyDescriptor(proto,'value').set.call(control,value);control.dispatchEvent(new Event('input',{bubbles:true}));});
+ if(control instanceof HTMLSelectElement)flushSync(()=>control.dispatchEvent(new Event('change',{bubbles:true})));
  await frame();
 }
 async function toggle(name){flushSync(()=>field(name).click());await frame();}
@@ -32,6 +34,10 @@ async function run(){
  api.get=async path=>path==='/api/services/prices'?{...(!legacyCatalog ? {dewormingProducts:[{id:'fixture-product',name:'Synthetic dewormer',lots:[{batch:'SYNTHETIC-EXPIRED',expiresOn:'2000-01-01'},{batch:'SYNTHETIC-LOT',expiresOn:'2099-12-31'}]}]} : {}),catalog:[{id:'srv_groom',name:'Grooming',price:100},{id:'srv_deworm',name:'Deworming',price:250},{id:'srv_rabies',name:'Anti-rabies',price:250}]}:path==='/api/clinical/note-options'?{options:{diagnosis:[],treatment:[]}}:{visits:[]};
  api.post=async()=>{throw Error('Fixture must never write clinical data');};
  try{
+  legacyCatalog=true;await mount('deworming','Routine deworming');await toggle('giveVaccine');
+  flushSync(()=>document.querySelector('form').requestSubmit());await frame();
+  await edit('brand','canex');assert(field('brand').value==='canex','Native product selection reset after validation');
+  legacyCatalog=false;
   await mount('checkup','Skin or ear problem');
   await edit('visitAnswer-onset','x'.repeat(501));
   assert(field('visitAnswer-onset').getAttribute('aria-invalid')==='true','History length must validate while typing');
@@ -84,6 +90,8 @@ async function run(){
   await mount('deworming','Routine deworming');await toggle('giveVaccine');
   assert(!field('batch'),'Optional batch field must be hidden');
   assert([...field('brand').options].some(o=>o.value==='canex'),'Legacy catalog must offer clinic brands');
+  flushSync(()=>document.querySelector('form').requestSubmit());await frame();
+  assert(field('brand').getAttribute('aria-invalid')==='true','Missing product must show validation before selection');
   await edit('brand','canex');assert(field('brand').value==='canex','Canex selection must remain selected');
   await edit('brand','drontal');assert(field('brand').value==='drontal','Brand must be changeable');
   await edit('brand','other');await edit('otherBrand','Actual custom product');

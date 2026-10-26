@@ -22,7 +22,12 @@ export default function LiveControl({as:Control='input',error='',onChange,onInpu
   return <><Control {...props} id={id || generated} ref={control}
     aria-invalid={!!visible} aria-describedby={[props['aria-describedby'],errorId].filter(Boolean).join(' ')}
     onChange={event=>{setTouched(true);onChange?.(event);check();}}
-    onInput={event=>{setTouched(true);onInput?.(event);check();}}
+    onInput={event=>{
+      // Native select input precedes change. Do not render the previous value
+      // back into the select before the owner's change handler commits it.
+      if(event.currentTarget.tagName==='SELECT'){onInput?.(event);return;}
+      setTouched(true);onInput?.(event);check();
+    }}
     onBlur={event=>{setTouched(true);onBlur?.(event);check();}}
     onInvalid={event=>{setTouched(true);check();onInvalid?.(event);}}>{children}</Control>
     <span id={errorId} className="err field-feedback" aria-live="polite">{visible}</span></>;

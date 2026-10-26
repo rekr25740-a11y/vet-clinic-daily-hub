@@ -1,5 +1,6 @@
+import CheckoutInbox from './CheckoutInbox.jsx';
 import DocumentHeader from "../components/DocumentHeader.jsx";
-import { PaginatedList, PaginatedTable } from "../components/Pagination.jsx";
+import { PaginatedTable } from "../components/Pagination.jsx";
 import {useFollowingClinicDay} from "../useClinicDay.js";
 import { useState } from "react";
 import {
@@ -12,7 +13,6 @@ import {
   Clock,
   Printer,
   TrendingUp,
-  AlertCircle,
   FileText,
   User,
   PawPrint,
@@ -217,43 +217,11 @@ export default function DailySalesPage({ db, setDb, me, go, say }) {
         </div>
       </div>
 
-      {/* Amber Banner: If visits are completed by doctor and waiting for front desk checkout */}
-      {me.role === "assistant" && unbilledCompleted.length > 0 && (
-        <div style={{ background: "#fefce8", border: "1.5px solid #fde047", borderRadius: "12px", padding: "14px 18px", marginBottom: "18px" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-              <div style={{ background: "#fef08a", color: "#854d0e", padding: "8px", borderRadius: "8px" }}>
-                <AlertCircle size={22} />
-              </div>
-              <div>
-                <b style={{ color: "#854d0e", fontSize: "14px" }}>
-                  {unbilledCompleted.length} Completed Visit(s) Waiting for Billing Checkout
-                </b>
-                <p style={{ margin: "2px 0 0", fontSize: "12.5px", color: "#713f12" }}>
-                  The attending veterinarian has signed off on these patients. Settle their invoices below to finalize the transaction.
-                </p>
-              </div>
-            </div>
-            <PaginatedList label="Awaiting checkout" resetKey={selDate} style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-              {unbilledCompleted.map(a => {
-                const p = (db.pets || []).find(pt => pt.id === a.petId) || {};
-                return (
-                  <button
-                    key={a.id}
-                    className="btn sm gold"
-                    onClick={() => setReceiptAppt(a)}
-                    style={{ fontWeight: 700, display: "flex", alignItems: "center", gap: "6px" }}
-                  >
-                    <Receipt size={14} />
-                    <span>Bill {p.name || "Patient"}</span>
-                    <span>({ownerBill(a).amount === null ? "Awaiting invoice" : `${money(ownerBill(a).amount)} draft`})</span>
-                  </button>
-                );
-              })}
-            </PaginatedList>
-          </div>
-        </div>
-      )}
+      {me.role==='assistant' && isToday && <CheckoutInbox me={me} db={db} blocked={!!receiptAppt} onOpen={task=>{
+        const visit=db.appts.find(a=>a.id===task.appointmentId);
+        if(!visit || visit.status!=='Completed' || visit.billingStatus==='Paid' || visit.admissionStatus==='Admitted')return false;
+        setReceiptAppt(visit);return true;
+      }}/>}
 
       {/* Transactions Ledger Table */}
       <section className="card" style={{ padding: "0", overflow: "hidden" }}>

@@ -120,9 +120,9 @@ function Dash({ db, setDb, me, go, say, navigation, onNavigationHandled }) {
         ]}
       />
 
-      <CheckoutInbox me={me} blocked={Boolean(billingAppt || showWalkIn || showExistingWalkIn || checkInAppt || reviewReq || rejecting || cardPetId || logCallTarget)} onOpen={task => {
+      <CheckoutInbox me={me} db={db} blocked={Boolean(billingAppt || showWalkIn || showExistingWalkIn || checkInAppt || reviewReq || rejecting || cardPetId || logCallTarget)} onOpen={task => {
         const visit=db.appts.find(a=>a.id===task.appointmentId);
-        if(!visit){say("The visit is loading. Please retry in a moment.");return false;}
+        if(!visit || visit.status!=='Completed' || visit.billingStatus==='Paid' || visit.admissionStatus==='Admitted')return false;
         setBillingAppt(visit);
         return true;
       }} />

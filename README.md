@@ -153,11 +153,13 @@ before deployment when the runtime database role cannot run DDL.
 
 Finalizing a consultation creates its reception task in the same transaction.
 The front desk inbox recovers unpaid completed visits from earlier dates and
-persists them across refreshes. New handoffs open checkout when reception is
+persists them across refreshes. Front Desk and today’s Daily Sales share this
+inbox for every visit type. Waiting visits open a new transaction with the patient
+and saved charges loaded, including on the first page load, when reception is
 idle; an open profile, intake form, invoice or receipt is kept on screen. Tasks
 arriving during that work wait until the form closes. The inbox refreshes every
 three seconds and shows failures with a retry action. No separate worker is
-needed for checkout.
+needed for checkout. Historical Daily Sales dates remain reports.
 
 Opening an unpaid invoice reserves it for that receptionist and browser window
 for five minutes, renewed every minute while open. Other receptionists can see

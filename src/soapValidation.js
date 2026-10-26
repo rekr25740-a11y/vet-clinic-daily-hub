@@ -17,6 +17,7 @@ export function validateSoapFields(form, today, birth, visitDate) {
   if (form.weight !== '' && form.weight != null && (!Number.isFinite(Number(form.weight)) || Number(form.weight) <= 0 || Number(form.weight) > 120)) {
     errors.weight = 'Enter a weight greater than 0 and no more than 120 kg, or leave it blank.';
   }
+  for(const [key,value] of Object.entries(form.visitAnswers || {})) if(typeof value!=='string' || value.length>500) errors[`visitAnswer-${key}`]='Use no more than 500 characters.';
   if (String(form.prescription || '').length > 3000) errors.prescription = 'Prescription notes cannot exceed 3,000 characters.';
   if (form.giveVaccine) {
     if (!form.vaccine) errors.vaccine='Please select the administered biological / vaccine.';

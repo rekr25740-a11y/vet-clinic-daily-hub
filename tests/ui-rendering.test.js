@@ -283,7 +283,7 @@ for(const [service,title] of [['vaccination','Vaccination record'],['deworming',
  const html=render(ui.SoapConsultationModal,{...props('vet',db),pet,appt});
  assert.match(html,new RegExp(title));assert.match(html,/10.25 kg/);
  assert.doesNotMatch(html,/S - Subjective|O - Objective|A - Assessment|P - Plan|SOAP Clinical Notes|Prescription &amp; take-home|Admit |Clinical Follow-up/);
- assert.equal(html.includes('Record vaccine given'),service==='vaccination');
+ assert.equal(html.includes('confirm vaccine was given'),service==='vaccination');
 });
 test('consultation shows read-only intake and separate additional findings with diagnosis suggestions',()=>{
  const db=populated(),pet=db.pets[0],appt={...db.appts.find(a=>a.petId===pet.id),service:'checkup',status:'In consultation',intakeVitals:{weight:10.25,temp:38.5}};db.appts=[appt];
@@ -376,4 +376,21 @@ test('reminder initial render does not claim provider connectivity or owner deli
 for(const role of ['owner','assistant','vet','admin'])test(`${role} complete portal renders role navigation with no page edits`,()=>{
  const html=render(ui.Portal,{...props(role,populated()),cfg:ui[role],onLogout(){}});
  assert.match(html,/aria-label="Main"/);assert.match(html,/portal-heading/);assert.doesNotMatch(html,/Leave with unsaved changes/);
+});
+
+for(const [service,reason,title,field] of [
+ ['checkup','Skin or ear problem','Skin / ear consultation','Onset and affected areas'],
+ ['checkup','Limping or injury','Injury / mobility consultation','Affected limb / area'],
+ ['checkup','Vomiting or diarrhea','Vomiting / diarrhea consultation','Onset and frequency'],
+ ['checkup','Not eating or drinking','Appetite / drinking consultation','When eating or drinking changed'],
+ ['checkup','Annual check-up','Wellness / annual check-up','Diet, activity'],
+ ['surgery','Dental assessment','Dental assessment','Mouth / teeth'],
+ ['surgery','Surgical assessment','Surgical assessment','Requested procedure'],
+ ['checkup','Follow-up visit','Follow-up / recheck','Changes since the previous visit'],
+ ['grooming','Sanitary care','sanitary care','Requested sanitary care'],
+])test(`focused clinical form: ${reason}`,()=>{
+ const db=populated(),pet=db.pets[0],appt={...db.appts.find(a=>a.petId===pet.id),service,reason,status:'In consultation'};db.appts=[appt];
+ const html=render(ui.SoapConsultationModal,{...props('vet',db),pet,appt});
+ assert.ok(html.includes(title));assert.ok(html.includes(field));assert.match(html,/name="visitAnswer-/);
+ if(service==='grooming')assert.match(html,/confirm grooming was performed/);
 });

@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {visitFormType,initialVaccineForVisit,serviceMatchesVisit,visitClinicalFields} from '../src/visitForm.js';
+import {visitProfile,visitFormType,initialVaccineForVisit,serviceMatchesVisit,visitClinicalFields} from '../src/visitForm.js';
 import {validateSoapFields} from '../src/soapValidation.js';
 import {clinicalCharges} from '../server/clinicalCharges.js';
 import {editablePrescription} from '../src/prescription.js';
@@ -78,4 +78,40 @@ test('confirmed deworming generates visit documentation and recalculates from th
  assert.ok(errors.diagnosis);assert.ok(errors.treatment);
  assert.equal(clinicalCharges([],null).length,0);
  assert.ok(validateSoapFields(visitClinicalFields({...dose,scheduleApproved:false},visit),'2026-10-25').scheduleApproved);
+});
+
+
+test('all published reasons resolve to a focused profile, preserving explicit service precedence',async()=>{
+ const {SERVICES,makeReason}=await import('../src/booking.js');
+ for(const [service,config] of Object.entries(SERVICES))for(const reason of config.options){
+  const profile=visitProfile({service,reason:makeReason(service,reason,'Custom concern')});
+  assert.ok(profile.title);assert.ok(profile.fields.length);assert.ok(profile.examination);
+ }
+ assert.equal(visitProfile({service:'checkup',reason:'Concern after vaccination'}).id,'consultation');
+ assert.equal(visitProfile({service:'checkup',reason:'Heart concern'}).id,'consultation');
+ assert.equal(visitProfile({service:'surgery',reason:'Follow-up'}).id,'followup');
+ assert.equal(visitProfile({service:'surgery',reason:'Other'}).id,'surgery');
+ assert.equal(visitProfile({reason:'Dental assessment'}).id,'dental');
+});
+test('confirmed preventive and grooming care generate documentation without inferring care from booking',()=>{
+ for(const service of ['vaccination','grooming']){
+  const visit={...appointment,service};
+  const draft={...form,diagnosis:'',treatment:'',giveVaccine:service==='vaccination',vaccine:'Anti-rabies',visitAnswers:{history:'Reported history',unrelated:'Do not copy'}};
+  const fields=visitClinicalFields(draft,visit,service==='grooming'?['srv_groom']:[]);
+  assert.match(fields.diagnosis,/confirmed suitability/);assert.match(fields.treatment,/2026-10-25/);
+  assert.doesNotMatch(fields.symptoms,/Do not copy/);
+  const deferred=visitClinicalFields({...draft,giveVaccine:false},visit,[]);
+  assert.equal(deferred.diagnosis,'');assert.equal(deferred.treatment,'');
+ }
+});
+test('focused history is included once in the durable record and validates each entry',()=>{
+ const visit={...appointment,service:'checkup',reason:'Skin or ear problem'};
+ const draft={...form,scheduleFollowUp:false,visitAnswers:{onset:'Two days',changes:'Scratching',intake:'Stale unrelated draft'}};
+ const fields=visitClinicalFields(draft,visit);
+ assert.match(fields.symptoms,/Onset and affected areas: Two days/);
+ assert.doesNotMatch(fields.symptoms,/Stale unrelated/);
+ assert.deepEqual(validateSoapFields(fields,'2026-10-25'),{});
+ const invalid=visitClinicalFields({...draft,visitAnswers:{onset:'x'.repeat(501)}},visit);
+ assert.ok(validateSoapFields(invalid,'2026-10-25')['visitAnswer-onset']);
+ assert.equal(form.diagnosis,visitClinicalFields(form,visit).diagnosis,'consultations still require real assessment');
 });

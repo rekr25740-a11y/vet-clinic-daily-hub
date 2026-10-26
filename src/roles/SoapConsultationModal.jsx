@@ -1,4 +1,4 @@
-import {visitFormType,initialVaccineForVisit,visitFormTitle,serviceMatchesVisit,intakeSummary,visitClinicalFields} from '../visitForm.js';
+import {visitProfile,visitFormType,initialVaccineForVisit,serviceMatchesVisit,intakeSummary,visitClinicalFields} from '../visitForm.js';
 import {ExternalHistorySummary} from '../components/ExternalHistory.jsx';
 import {useFormValidation} from '../components/useFormValidation.jsx';
 import AdmissionForm from './AdmissionForm.jsx';
@@ -53,7 +53,8 @@ function NoteShortcuts({ field, label, options, value, onChange }) {
 export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClose, onSaved }) {
   const TODAY=today();
   const formType=visitFormType(appt), consultation=formType==='consultation', preventive=['vaccination','deworming'].includes(formType);
-  const formTitle=visitFormTitle(formType);
+  const profile=visitProfile(appt);
+  const formTitle=profile.title;
   const inFlight=useRef(false),consultationId=useRef(uid()),vaccinationId=useRef("v"+uid());
   const [tab, setTab] = useState("soap"); // 'soap' | 'emr'
   const owner = db.owners.find(o => o.id === pet.ownerId) || {};
@@ -66,7 +67,7 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
   const triageRemark = iv?.triageLevel && iv.triageLevel !== "Routine" ? ` [TRIAGE: ${iv.triageLevel.toUpperCase()}]` : "";
 
   const initialForm = {
-    date: TODAY,backdateReason:"",
+    date: TODAY,backdateReason:"",visitAnswers:{},
     symptoms: appt?.reason ? `Chief Complaint: ${appt.reason}${triageRemark}` : "",
     objective: "",
     diagnosis: "",
@@ -96,7 +97,8 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
   const {form:storedForm, prescriptionItems, performedServices, expectedVisit} = draftState.draft;
   const f={...storedForm,...(formType==='deworming' ? {doseNo:storedForm.doseNo ?? '1',doseOf:storedForm.doseOf ?? '1'} : {}),giveVaccine:preventive && storedForm.giveVaccine,scheduleFollowUp:consultation && storedForm.scheduleFollowUp,
     vaccine:formType==='deworming' ? 'Deworming' : storedForm.vaccine==='Deworming' ? '' : storedForm.vaccine};
-  const clinicalForm=visitClinicalFields(f,appt);
+  const careConfirmed=preventive ? f.giveVaccine : formType==='grooming' && performedServices.includes('srv_groom');
+  const clinicalForm=visitClinicalFields(f,appt,performedServices);
   consultationId.current = draftState.draft.consultationId;
   vaccinationId.current = draftState.draft.vaccinationId;
   const setF = value => draftState.setPart('form', value);
@@ -140,10 +142,13 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
   const errs = {...actionErrors,...validation.errors};
   const touch = validation.touch;
   const set = (k,v) => {
-    validation.touch(k);
+    validation.changed(k);
     if(k==='giveVaccine' && !v) for(const field of ['vaccine','doseNo','doseOf','intervalDays','scheduleApproved','brand','batch']) validation.changed(field);
     if(k==='scheduleFollowUp' && !v) for(const field of ['careStatus','followUpDate','followUpReason']) validation.changed(field);
     setF({...f,[k]:v,...(["date","vaccine","intervalDays","brand","batch","doseNo","doseOf"].includes(k) ? {scheduleApproved:false} : {})});
+    if(['date','vaccine','intervalDays','brand','batch','doseNo','doseOf'].includes(k) && f.giveVaccine) validation.changed('scheduleApproved');
+    if(k==='microchipDate') validation.changed('microchipNumber');
+    if(k==='doseNo') validation.changed('doseOf');
     if(k==='prescription')setActionErrors(previous=>({...previous,prescription:''}));
   };
   const handleFollowUpDaysChange = days => {
@@ -166,7 +171,7 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
     try {
       selectedItems = (consultation ? prescriptionItems : []).map(item => {
         const p=editablePrescription(item);
-        if (!Number.isInteger(p.quantity) || p.quantity < 1 || p.quantity > 1000 || !p.instructions.trim()) throw new Error('Complete the directions and quantity for each selected product.');
+        if (!Number.isInteger(p.quantity) || p.quantity < 1 || p.quantity > 1000 || !p.instructions.trim() || p.instructions.length>1000) throw new Error('Complete the directions and quantity for each selected product.');
         return p;
       });
     } catch (err) { e.prescription = err.message; }
@@ -416,6 +421,17 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
               </div>
             )}
 
+            <section aria-label="Visit-specific history" className="ow-note">
+              <h4>{profile.title} · visit details</h4>
+              <p>Optional details are included in this visit's history automatically.</p>
+              {profile.fields.map(({key,label}) => <div className="fld" key={key}>
+                <label htmlFor={`visitAnswer-${key}`}>{label}</label>
+                <textarea id={`visitAnswer-${key}`} name={`visitAnswer-${key}`} rows={2} value={f.visitAnswers?.[key] || ''}
+                  aria-invalid={!!errs[`visitAnswer-${key}`]} aria-describedby={`visitAnswer-${key}-error`}
+                  onChange={event=>{validation.changed(`visitAnswer-${key}`);setF(previous=>({...previous,visitAnswers:{...previous.visitAnswers,[key]:event.target.value}}));}} />
+                <span id={`visitAnswer-${key}-error`} className="err" aria-live="polite">{errs[`visitAnswer-${key}`]}</span>
+              </div>)}
+            </section>
             <div className="soap-fields" style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)", gap: "12px" }}>
               {consultation && <div className="fld full" style={{ gridColumn: "1/-1" }}>
                 <label>
@@ -447,7 +463,7 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
                     className={errs.objective ? "bad" : f.objective.trim() ? "ok" : ""}
                     onChange={e => set("objective", e.target.value)}
                     onBlur={() => touch("objective")}
-                    placeholder="Add examination findings, heart rate, hydration, mucous membranes, lymph nodes…"
+                    placeholder={profile.examination}
                   />
                 </label>
                 {errs.objective && <span id="soap-objective-error" className="err" role="alert">{errs.objective}</span>}
@@ -486,19 +502,23 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
                 {f.date<TODAY && <label>Reason for historical consultation date *<input {...validation.field("backdateReason")} maxLength={500} value={f.backdateReason || ""} onChange={e=>set("backdateReason",e.target.value)} />{validation.feedback("backdateReason")}</label>}
               </div>
 
-              {formType==='deworming' && <div style={{gridColumn:'1/-1'}}>                <label style={{ display: "flex", gap: "10px", alignItems: "center", cursor: "pointer", fontWeight: "700", color: "#166534" }}>
+              {preventive && <div style={{gridColumn:'1/-1'}}><label style={{ display: "flex", gap: "10px", alignItems: "center", cursor: "pointer", fontWeight: "700", color: "#166534" }}>
                   <input
                     type="checkbox"
                     name="giveVaccine" checked={f.giveVaccine}
                     onChange={e => set("giveVaccine", e.target.checked)}
                   />
-                  <span>{formType==='deworming' ? 'Patient assessed as suitable — confirm deworming was given' : 'Record vaccine given and approve the next booster schedule'}</span>
+                  <span>{formType==='deworming' ? 'Patient assessed as suitable — confirm deworming was given' : 'Patient assessed as suitable — confirm vaccine was given'}</span>
                 </label><p>Leave unchecked if treatment was deferred; record the reason and next steps below.</p></div>}
+              {formType==='grooming' && <div style={{gridColumn:'1/-1'}}>
+                <label className="service-check"><input type="checkbox" name="groomingPerformed" checked={careConfirmed} onChange={event=>{const checked=event.target.checked;setPerformedServices(previous=>checked ? [...new Set([...previous,'srv_groom'])] : previous.filter(id=>id!=='srv_groom'));}} /> Patient assessed as suitable — confirm grooming was performed</label>
+                <p>Confirmed grooming is added to this record and billing once. If deferred, record the reason and next steps.</p>
+              </div>}
               <div className="fld full" style={{ gridColumn: "1/-1" }}>
-                <label htmlFor="soap-diagnosis"><b>{consultation ? 'A - Assessment (Diagnosis)' : formType==='deworming' ? (f.giveVaccine ? 'Additional assessment notes (optional)' : 'Reason for deferral / assessment') : formType==='grooming' ? 'Condition / suitability for grooming' : 'Suitability assessment / reason for deferral'}</b>{!(formType==='deworming' && f.giveVaccine) && <i> *</i>}</label>
+                <label htmlFor="soap-diagnosis"><b>{consultation ? 'A - Assessment (Diagnosis)' : careConfirmed ? 'Additional assessment notes (optional)' : 'Suitability assessment / reason for deferral'}</b>{!careConfirmed && <i> *</i>}</label>
                 {consultation && optionsError && <p role="alert">Choices could not load. You can still type your notes. <button type="button" onClick={() => retryOptions(n => n + 1)}>Retry choices</button></p>}
                 {consultation && <NoteShortcuts field="diagnosis" label="Diagnosis suggestions" options={noteOptions.diagnosis} value={f.diagnosis} onChange={value => set("diagnosis", value)} />}
-                <p id="soap-diagnosis-hint" className="soap-note-label">{consultation ? 'Record the diagnosis or differential diagnoses supported by your findings. Review any suggested text for this patient.' : formType==='deworming' && f.giveVaccine ? 'Your confirmation above records suitability automatically. Add findings only when needed.' : 'Record whether this patient is suitable for the requested care, or explain why it is deferred.'}</p>
+                <p id="soap-diagnosis-hint" className="soap-note-label">{consultation ? 'Record the diagnosis or differential diagnoses supported by your findings. Review any suggested text for this patient.' : careConfirmed ? 'Your confirmation above records suitability automatically. Add findings only when needed.' : 'Record whether this patient is suitable for the requested care, or explain why it is deferred.'}</p>
                   <textarea
                     id="soap-diagnosis"
                     rows={2}
@@ -514,9 +534,9 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
               </div>
 
               <div className="fld full" style={{ gridColumn: "1/-1" }}>
-                <label htmlFor="soap-treatment"><b>{consultation ? 'P - Plan (Treatment & In-Clinic Procedures)' : formType==='deworming' && f.giveVaccine ? 'Additional deworming / after-care instructions (optional)' : 'Care provided / after-care instructions'}</b>{!(formType==='deworming' && f.giveVaccine) && <i> *</i>}</label>
+                <label htmlFor="soap-treatment"><b>{consultation ? 'P - Plan (Treatment & In-Clinic Procedures)' : careConfirmed ? 'Additional care / after-care instructions (optional)' : 'Care provided / after-care instructions'}</b>{!careConfirmed && <i> *</i>}</label>
                 {consultation && <NoteShortcuts field="treatment" label="Treatment suggestions" options={noteOptions.treatment} value={f.treatment} onChange={value => set("treatment", value)} />}
-                <p id="soap-treatment-hint" className="soap-note-label">{formType==='deworming' && f.giveVaccine ? 'The treatment, administration date and next due date are added automatically. Add patient-specific instructions if needed.' : 'Enter your treatment plan and patient-specific instructions here. Review and edit any added text for this patient.'}</p>
+                <p id="soap-treatment-hint" className="soap-note-label">{careConfirmed ? 'Confirmed care and its date are added automatically, including the next due date when applicable. Add patient-specific instructions if needed.' : 'Enter your treatment plan and patient-specific instructions here. Review and edit any added text for this patient.'}</p>
                   <textarea
                     id="soap-treatment"
                     rows={2}
@@ -549,7 +569,7 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
                 <small>Admission → daily care → vet discharge approval → payment → confirmed release.</small>
               </section>}
 
-              {!preventive && <fieldset style={{gridColumn:"1/-1"}}><legend>Confirm services performed</legend>
+              {consultation && <fieldset style={{gridColumn:"1/-1"}}><legend>Confirm services performed</legend>
                 <p>Select only services actually performed. Each selection is added to billing once at the fixed clinic price. The choices below match the reason for this visit.</p>
                 {catalogError ? <p role="alert">{catalogError} <button type="button" onClick={() => retryCatalog(n => n + 1)}>Retry prices</button></p> : !serviceCatalog.length ? <p>Loading services…</p> : relevantServices.map(p => {
                   return <label key={p.id} className="service-check"><input type="checkbox" checked={selectedServices.includes(p.id)} onChange={e => {const checked=e.target.checked;setPerformedServices(prev => checked ? [...prev,p.id] : prev.filter(id => id !== p.id));}} /> {p.name} · ₱{p.price.toLocaleString()}</label>;
@@ -557,16 +577,10 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
               </fieldset>}
               {consultation && <div style={{gridColumn: "1/-1"}}><PrescriptionBuilder items={prescriptionItems} onChange={items=>{setPrescriptionItems(items);setActionErrors(previous=>({...previous,prescription:''}));}} notes={f.prescription} onNotes={v => set("prescription", v)} error={errs.prescription} /></div>}
 
+              {formType==='grooming' && <p style={{gridColumn:'1/-1'}}>{careConfirmed ? `Grooming confirmed · ${relevantServices.find(p=>p.id==='srv_groom') ? `₱${relevantServices.find(p=>p.id==='srv_groom').price.toLocaleString()} added to billing once on finalization.` : 'Loading service price…'}` : 'No grooming charge is added until care is confirmed.'}</p>}
               {/* Administration is shown only for preventive visits. */}
               {preventive && <div style={{ gridColumn: "1/-1", background: "#f0fdf4", border: "1px solid #bbf7d0", padding: "14px", borderRadius: "12px", marginTop: "4px" }}>
-                {formType!=='deworming' && <>                <label style={{ display: "flex", gap: "10px", alignItems: "center", cursor: "pointer", fontWeight: "700", color: "#166534" }}>
-                  <input
-                    type="checkbox"
-                    name="giveVaccine" checked={f.giveVaccine}
-                    onChange={e => set("giveVaccine", e.target.checked)}
-                  />
-                  <span>{formType==='deworming' ? 'Patient assessed as suitable — confirm deworming was given' : 'Record vaccine given and approve the next booster schedule'}</span>
-                </label></>}
+
 
                 {f.giveVaccine && (
                   <div className="soap-fields" style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)", gap: "10px", marginTop: "12px" }}>
@@ -679,7 +693,7 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
                           type="date"
                           id="soap-followUpDate" aria-invalid={!!errs.followUpDate} aria-describedby="soap-followUpDate-error" name="followUpDate" value={f.followUpDate}
                           min={TODAY}
-                          onChange={e => set("followUpDate", e.target.value)}
+                          onChange={e => {set("followUpDate", e.target.value);setF(previous=>({...previous,followUpDays:""}));}}
                         />
                         {errs.followUpDate && <p id="soap-followUpDate-error" className="err" role="alert">{errs.followUpDate}</p>}
                       </div>

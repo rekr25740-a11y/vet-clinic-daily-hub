@@ -22,21 +22,23 @@ export default function PrescriptionBuilder({items, onChange, notes, onNotes, er
     {loadError ? <p role="alert">{loadError} <button type="button" className="btn sm" onClick={() => retry(n => n + 1)}>Retry products</button></p> : !catalog.length ? <p role="status">Loading products…</p> : <div className="rx-catalog">{found.map(p => <button type="button" className="rx-product" key={p.id} disabled={selected.has(p.id) || items.length >= 30} onClick={() => onChange([...items, {catalogId:p.id,name:p.name,price:p.price,unit:p.unit || 'item / package',category:p.category,quantity:1,instructions:''}])}><span><b>{p.name}</b><small>{p.category}{p.group ? ` · ${p.group}` : ''}{p.requiresPrescription ? ' · Prescription required' : ''}</small></span><b>₱{p.price.toLocaleString()} {selected.has(p.id) ? '✓' : '+'}</b></button>)}{!found.length && <p>No products match.</p>}</div>}
     {preview.map(p => {
       const quantityError=numberError(p.quantity,'Quantity',1,1000,{integer:true});
+      const directionsError=!p.instructions?.trim() ? 'Directions / administration instructions are required.' : p.instructions.length>1000 ? 'Use no more than 1,000 characters.' : '';
       return <fieldset className="rx-line" key={p.catalogId}><legend>{p.name}</legend><p>₱{p.price.toLocaleString()} each · {p.unit || 'item / package'}</p>
         <div className="rx-grid">
           <label>Directions / clinical instructions *
             <textarea
-              maxLength={1000}
+              name={`rx-${p.catalogId}-instructions`} required maxLength={1000}
+              aria-invalid={!!directionsError} aria-describedby={`rx-${p.catalogId}-instructions-error`}
               value={p.instructions}
               placeholder="e.g. Give 1 tablet twice daily with meals for 7 days"
-              className={!p.instructions?.trim() ? "bad" : "ok"}
+              className={directionsError ? "bad" : "ok"}
               onChange={e => update(p.catalogId,{instructions:e.target.value})}
             />
-            {!p.instructions?.trim() && <span className="err" style={{fontSize:11.5,marginTop:2,display:'block'}}>Directions / administration instructions are required.</span>}
+            {directionsError && <span id={`rx-${p.catalogId}-instructions-error`} className="err" aria-live="polite">{directionsError}</span>}
           </label>
           <label>Quantity *
             <input
-              type="number"
+              type="number" name={`rx-${p.catalogId}-quantity`} required
               min="1"
               max="1000"
               step="1"
@@ -50,9 +52,9 @@ export default function PrescriptionBuilder({items, onChange, notes, onNotes, er
         <div className="row end"><b>Product total: ₱{(Number(p.quantity || 0) * p.price).toLocaleString()}</b><button className="btn sm ghost" type="button" aria-label={`Remove ${p.name}`} onClick={() => onChange(items.filter(x => x.catalogId !== p.catalogId))}>Remove</button></div>
       </fieldset>;
     })}
-    <label>External prescriptions / additional home-care instructions<textarea rows={3} maxLength={3000} value={notes} onChange={e => onNotes(e.target.value)} /></label>
+    <label>External prescriptions / additional home-care instructions<textarea name="prescription" aria-invalid={!!error} aria-describedby="rx-notes-error" rows={3} maxLength={3000} value={notes} onChange={e => onNotes(e.target.value)} /></label>
     <p>External prescriptions are recorded for the owner; only selected catalog products are added to clinic billing.</p>
     {!!items.length && <div className="rx-preview"><b>Prescription preview</b><p style={{whiteSpace:'pre-wrap'}}>{prescriptionText(preview, notes)}</p></div>}
-    {error && <p className="err" role="alert">{error}</p>}
+    {error && <p id="rx-notes-error" className="err" role="alert">{error}</p>}
   </section>;
 }

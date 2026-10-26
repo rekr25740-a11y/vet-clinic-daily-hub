@@ -1,3 +1,4 @@
+import {profileForVisit} from './visitProfiles.js';
 import {VACCINE_CHOICES,vaccineIdFromReason} from './vaccineBooking.js';
 import { serviceOf } from './booking.js';
 import { boosterDate, VACCINE_SERVICE } from './clinicalWorkflow.js';
@@ -9,6 +10,7 @@ export function visitFormType(appointment) {
   if (service === 'grooming' || !appointment.service && /groom|sanitary/i.test(appointment.reason || '')) return 'grooming';
   return 'consultation';
 }
+export const visitProfile = appointment => profileForVisit(appointment,visitFormType(appointment));
 export const visitFormTitle = type => ({vaccination:'Vaccination record',deworming:'Deworming record',grooming:'Grooming record',consultation:'SOAP Consultation'}[type]);
 export function serviceMatchesVisit(service, type) {
   const preventive = Object.values(VACCINE_SERVICE).includes(service.id);
@@ -22,18 +24,25 @@ export function intakeSummary(vitals) {
 }
 // Keep the durable clinical record format used by history, checkout and PDFs.
 // Hidden fields from an older draft must not add unrelated care or charges.
-export function visitClinicalFields(form, appointment) {
+export function visitClinicalFields(form, appointment, performedServices = []) {
   const type = visitFormType(appointment), consultation = type === 'consultation';
   const summary = intakeSummary(appointment.intakeVitals);
   const notes = (form.objective || '').trim();
+  const profile=visitProfile(appointment);
+  const answers=Object.fromEntries(profile.fields.map(({key})=>[key,form.visitAnswers?.[key] ?? '']));
+  const history=profile.fields.filter(({key})=>typeof answers[key]==='string' && answers[key].trim()).map(({key,label})=>`${label}: ${answers[key].trim()}`).join('\n');
+  const preventive=['vaccination','deworming'].includes(type);
+  const confirmed=preventive && form.giveVaccine || type==='grooming' && performedServices.includes('srv_groom');
+  const care=type==='deworming' ? 'Deworming' : type==='vaccination' ? (form.vaccine || 'Vaccination') : 'Grooming';
   return {...form,
-    diagnosis:type==='deworming' && form.giveVaccine ? ['Veterinarian confirmed suitability for deworming.',form.diagnosis].filter(Boolean).join('\n') : form.diagnosis,
-    treatment:type==='deworming' && form.giveVaccine ? [
-      `Deworming administered on ${form.date}${form.brand?.trim() ? ` using ${form.brand.trim()}` : ''}.`,
-      boosterDate(form.date,form.intervalDays) ? `Next deworming due ${boosterDate(form.date,form.intervalDays)} (${form.intervalDays} days after administration).` : '',
+    visitAnswers:answers,
+    diagnosis:confirmed ? [`Veterinarian confirmed suitability for ${type}.`,form.diagnosis].filter(Boolean).join('\n') : form.diagnosis,
+    treatment:confirmed ? [
+      `${care} ${preventive ? 'administered' : 'provided'} on ${form.date}${preventive && form.brand?.trim() ? ` using ${form.brand.trim()}` : ''}.`,
+      preventive && boosterDate(form.date,form.intervalDays) ? `Next ${type} due ${boosterDate(form.date,form.intervalDays)} (${form.intervalDays} days after administration).` : '',
       form.treatment,
     ].filter(Boolean).join('\n') : form.treatment,
-    symptoms:consultation ? form.symptoms : `Reason for visit: ${appointment.reason || visitFormTitle(type)}`,
+    symptoms:[consultation ? form.symptoms : `Reason for visit: ${appointment.reason || visitFormTitle(type)}`,history].filter(Boolean).join('\n'),
     objective:notes.startsWith(summary) ? notes : [summary,notes].filter(Boolean).join('\n'),
     giveVaccine:['vaccination','deworming'].includes(type) && form.giveVaccine,
     scheduleFollowUp:consultation && form.scheduleFollowUp,

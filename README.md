@@ -1400,3 +1400,31 @@ current online, walk-in, admission and payment handoffs.
 ### Deworming visit shortcuts
 
 The veterinarian explicitly confirms suitability and actual administration. For confirmed deworming, the record generates the suitability statement, treatment date, product (when entered), and next due date; additional findings and after-care instructions are optional. Deferred visits still require assessment and next steps. New visits default to one administration (1 of 1), with optional series editing; these counts are not tablet quantities or a calculated medicine dose. The next due date is the care date plus the veterinarian-approved interval. Brand and lot remain actual-package entries because the service catalog contains no stock-lot inventory.
+
+### Forms matched to visit reasons
+
+The booked service determines which care can be recorded. Within consultations,
+visit reasons select focused history fields and examination prompts for wellness,
+skin/ear concerns, injury/mobility, vomiting/diarrhea, appetite/drinking changes,
+dental assessment, surgical assessment, follow-up/recheck and urgent care. Custom
+reasons retain the general consultation form. Grooming includes a sanitary-care
+variant; vaccination and deworming retain their own administration fields.
+
+Focused history entries are optional, retained in browser drafts, and appended to
+the durable visit history automatically. Each entry validates during typing with
+a 500-character limit. Existing SOAP limits still apply to the assembled record.
+Confirmed vaccination, deworming and grooming generate suitability and care
+statements; additional assessment and after-care notes are optional. Deferral
+still requires a reason and next steps. Booking alone never confirms care,
+chooses a dose, approves an interval or creates an administration charge.
+
+Editing administration details clears interval approval and shows feedback next
+to that control. Date arithmetic, saved intake, requested vaccine selection,
+service prices and prescription totals remain automatic. Surgery intake offers
+surgical/dental/recheck choices. Diagnosis, medicine instructions and actual
+product identifiers remain explicit entries.
+
+Browser regression checks: run `npm run dev:frontend -- --host 0.0.0.0` and open
+`/tests/browser/visit-forms.html`. The synthetic fixture checks live validation,
+draft recovery, confirmed-care notes, calculated dates and invalidated approval.
+It replaces API reads locally and performs no clinical writes.

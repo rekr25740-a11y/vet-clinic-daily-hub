@@ -85,7 +85,7 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
   };
 
   const formType=visitFormType(appt);
-  const reasonPresets=formType==='consultation'?['Routine Consultation & Exam','Vomiting / Diarrhea','Skin / Allergy Concern','Emergency / Critical']:formType==='deworming'?['Routine Deworming','Deworming Follow-up']:['Grooming & Sanitary','Nail Trim / Ear Cleaning'];
+  const reasonPresets=appt?.service==='surgery'?['Surgical assessment','Dental assessment','Surgery – Follow-up']:formType==='consultation'?['Routine Consultation & Exam','Vomiting / Diarrhea','Skin / Allergy Concern','Emergency / Critical']:formType==='deworming'?['Routine Deworming','Deworming Follow-up']:['Grooming & Sanitary','Nail Trim / Ear Cleaning'];
 
   const review = useSubmissionReview([weight,temp,triage,serviceReason,notes,fasted,currentVisit,pet,owner,stale,TODAY]);
 

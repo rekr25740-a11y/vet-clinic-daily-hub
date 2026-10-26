@@ -39,7 +39,10 @@ before initial check-in. Earlier unfinished clinical visits remain visible.
 
 - The assigned veterinarian records care for the visit purpose. Vaccination and
   deworming use their own records; consultation and surgical assessment use SOAP;
-  grooming uses a grooming record. The veterinarian records actual doses and
+  grooming uses a grooming record. Consultation history prompts match the saved
+  reason (wellness, skin/ear, injury, digestive, appetite, dental, surgery, urgent
+  care or recheck). Confirmed preventive/grooming care generates its documentation;
+  deferrals require a reason and next steps. The veterinarian records actual doses and
   approves the next due date. Imported history and planned doses are separate.
 - A vet can transfer an active visit to another vet with saved handoff
   instructions. The receiving vet gets the same visit and permitted history in

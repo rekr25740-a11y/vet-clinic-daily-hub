@@ -41,3 +41,17 @@ test('older unfinished drafts gain optional vaccination-card fields without losi
  assert.equal(recovered.consultationId,fixture().consultationId);
  assert.deepEqual(recovered.expectedVisit,fixture().expectedVisit);
 });
+
+
+test('focused visit fields migrate older drafts and preserve incomplete entries',()=>{
+ const db=storage();writeSoapDraft(db,'draft',fixture());
+ const initial={...form,visitAnswers:{}};
+ assert.deepEqual(readSoapDraft(db,'draft',initial).form.visitAnswers,{});
+ const draft={...fixture(),form:{...fixture().form,visitAnswers:{onset:'Draft onset'}}};
+ writeSoapDraft(db,'draft',draft);
+ assert.deepEqual(readSoapDraft(db,'draft',initial).form.visitAnswers,{onset:'Draft onset'});
+ for(const value of [[],{onset:22}]){
+  writeSoapDraft(db,'draft',{...draft,form:{...draft.form,visitAnswers:value}});
+  assert.throws(()=>readSoapDraft(db,'draft',initial));
+ }
+});

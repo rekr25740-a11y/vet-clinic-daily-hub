@@ -1481,3 +1481,9 @@ expired or mismatched configured lots. Missing lots stay empty and appear as
 separately as the record reference; it is never written into the lot field.
 Vaccination still requires the actual lot. This replaces the earlier requirement
 that every deworming save include a lot, without changing existing recorded lots.
+
+Deworming brand selection also supports older service-price responses that omit
+product metadata: it retains the existing Canex/Drontal choices with no invented
+stock. Explicitly configured product lists take precedence. The optional lot
+input is hidden when no configured lots are available; configured lot selection
+and required vaccination lot entry remain available.

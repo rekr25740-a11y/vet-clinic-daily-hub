@@ -34,3 +34,11 @@ test('clinic product configuration defaults to catalog brands without fabricated
  assert.throws(()=>dewormingProducts());
  }finally{if(previous===undefined)delete process.env.CLINIC_DEWORMING_PRODUCTS_JSON;else process.env.CLINIC_DEWORMING_PRODUCTS_JSON=previous;}
 });
+
+test('older catalog responses retain brand choices without overriding an explicit configured list',async()=>{
+ const {dewormingProductChoices}=await import('../src/dewormingProducts.js');
+ assert.deepEqual(dewormingProductChoices({catalog:[]}).map(p=>p.name),['Canex','Drontal']);
+ assert.deepEqual(dewormingProductChoices({dewormingProducts:[]}),[]);
+ const configured=[{id:'clinic',name:'Clinic product',lots:[]}];
+ assert.equal(dewormingProductChoices({dewormingProducts:configured}),configured);
+});

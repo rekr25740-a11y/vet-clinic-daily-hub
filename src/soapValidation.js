@@ -30,7 +30,7 @@ export function validateSoapFields(form, today, birth, visitDate) {
     if (!Number.isInteger(Number(form.doseOf)) || Number(form.doseOf)<1 || Number(form.doseOf)>20 || Number(form.doseOf)<Number(form.doseNo)) errors.doseOf='Total planned doses must be 1–20 and at least the administered dose number.';
     if (!boosterDate(form.date,form.intervalDays)) errors.intervalDays='Enter a whole booster interval from 1 to 3,650 days and a valid administration date.';
     if (!form.scheduleApproved) errors.scheduleApproved='Approve the booster interval for this patient.';
-    if (!String(form.brand || '').trim()) errors.brand='Vaccine manufacturer brand name is required.';
+    if (!String(form.brand || '').trim()) errors.brand=form.vaccine==='Deworming' ? 'Select a product brand.' : 'Vaccine manufacturer brand name is required.';
     if (form.vaccine!=='Deworming' && !String(form.batch || '').trim()) errors.batch='Lot / Batch number is required for official certification.';
   }
   if (form.scheduleFollowUp) {

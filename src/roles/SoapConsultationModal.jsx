@@ -1,3 +1,4 @@
+import {DEFAULT_DEWORMING_PRODUCTS,dewormingProductChoices} from '../dewormingProducts.js';
 import {careForProfile,elapsedDays,calculatedFollowUp} from '../visitCare.js';
 import {dewormingSchedule,availableDewormingLots,DEWORMING_REFERENCE} from '../dewormingSchedule.js';
 import {visitProfile,visitFormType,initialVaccineForVisit,serviceMatchesVisit,intakeSummary,visitClinicalFields} from '../visitForm.js';
@@ -99,7 +100,7 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
     consultationId:consultationId.current, vaccinationId:vaccinationId.current, expectedVisit:intakeVisitSnapshot(appt)});
   const {form:storedForm, prescriptionItems, performedServices, expectedVisit} = draftState.draft;
   const suggestion=dewormingSchedule({date:storedForm.date,birth:pet.birth,species:pet.species,weaned:storedForm.dewormingWeaned,monthlyRisk:storedForm.dewormingMonthlyRisk});
-  const [dewormingProducts,setDewormingProducts]=useState([]);
+  const [dewormingProducts,setDewormingProducts]=useState(DEFAULT_DEWORMING_PRODUCTS);
   const selectedProduct=dewormingProducts.find(p=>p.id===storedForm.dewormingProductId);
   const availableLots=availableDewormingLots(selectedProduct,storedForm.date);
   const automaticSchedule=formType==='deworming' && !storedForm.dewormingManual && suggestion;
@@ -142,7 +143,7 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
   const [catalogAttempt, retryCatalog] = useState(0);
   useEffect(() => {
     let active = true;
-    api.get('/api/services/prices').then(r => { if (active) { setServiceCatalog(r.catalog.filter(p => p.id.startsWith('srv_') && !p.requiresPrescription)); setDewormingProducts(r.dewormingProducts || []); setCatalogError(''); } }).catch(e => { if (active) setCatalogError(e.message); });
+    api.get('/api/services/prices').then(r => { if (active) { setServiceCatalog(r.catalog.filter(p => p.id.startsWith('srv_') && !p.requiresPrescription)); setDewormingProducts(dewormingProductChoices(r)); setCatalogError(''); } }).catch(e => { if (active) setCatalogError(e.message); });
     return () => { active = false; };
   }, [catalogAttempt]);
   const relevantServices=serviceCatalog.filter(p=>serviceMatchesVisit(p,formType));
@@ -659,7 +660,7 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
                     <div className="fld">
                       <label htmlFor="soap-brand">{formType==='deworming' ? 'Product brand' : 'Vaccine Brand'}</label>
                       {formType==='deworming' ? <>
-                        <select id="soap-brand" name="brand" value={selectedProduct ? selectedProduct.id : f.dewormingProductId==='other' || f.brand ? 'other' : ''} aria-invalid={!!errs.brand} aria-describedby="soap-brand-error" onChange={e=>{
+                        <select id="soap-brand" name="brand" style={{appearance:'auto'}} value={selectedProduct ? selectedProduct.id : f.dewormingProductId==='other' || f.brand ? 'other' : ''} aria-invalid={!!errs.brand} aria-describedby="soap-brand-error" onChange={e=>{
                           const productId=e.target.value;const product=dewormingProducts.find(p=>p.id===productId);
                           validation.changed('brand');validation.changed('batch');validation.changed('scheduleApproved');
                           setF(previous=>({...previous,dewormingProductId:product?.id || productId,brand:product?.name || '',batch:availableDewormingLots(product,f.date)[0]?.batch || '',scheduleApproved:false}));
@@ -667,13 +668,13 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
                           <option value="">Select product</option><option value="other">Other product</option>
                           {dewormingProducts.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
                         </select>
-                        {!selectedProduct && (f.dewormingProductId==='other' || f.brand) && <input aria-label="Other product name" name="brand" value={f.brand} maxLength={60} onChange={e=>set('brand',e.target.value)} aria-invalid={!!errs.brand} aria-describedby="soap-brand-error"/>}
+                        {!selectedProduct && (f.dewormingProductId==='other' || f.brand) && <input aria-label="Other product name" name="otherBrand" value={f.brand} maxLength={60} onChange={e=>set('brand',e.target.value)} aria-invalid={!!errs.brand} aria-describedby="soap-brand-error"/>}
                       </> : <input type="text" placeholder="e.g. Defensor 3, Vanguard" id="soap-brand" aria-invalid={!!errs.brand} aria-describedby="soap-brand-error" name="brand" value={f.brand} onChange={e=>set('brand',e.target.value)}/>}
 
                       {errs.brand && <span id="soap-brand-error" className="err" aria-live="polite">{errs.brand}</span>}
                     </div>
 
-                    <div className="fld">
+                    {(formType!=='deworming' || availableLots.length>0) && <div className="fld">
                       <label htmlFor="soap-batch">Batch / Lot Number{formType==='deworming' && !availableLots.length ? ' (optional)' : ''}</label>
                       {formType==='deworming' && availableLots.length ? <select id="soap-batch" name="batch" value={f.batch} onChange={e=>set('batch',e.target.value)} aria-invalid={!!errs.batch} aria-describedby="soap-batch-error">
                         {availableLots.map(l=><option key={l.batch} value={l.batch}>{l.batch} · expires {l.expiresOn}</option>)}
@@ -681,7 +682,7 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
 
                       {formType==='deworming' && <small>Administration reference: {vaccinationId.current}</small>}
                       {errs.batch && <span id="soap-batch-error" className="err" aria-live="polite">{errs.batch}</span>}
-                    </div>
+                    </div>}
                     {formType==='vaccination' && [['manufacturer','Manufacturer (optional)'],['serialNumber','Serial number (optional)']].map(([key,label])=><div className="fld" key={key}><label htmlFor={`soap-${key}`}>{label}</label><input id={`soap-${key}`} name={key} value={f[key] || ''} onChange={e=>set(key,e.target.value)} maxLength={100} aria-invalid={!!errs[key]} aria-describedby={`soap-${key}-error`}/>{errs[key] && <span id={`soap-${key}-error`} className="err" aria-live="polite">{errs[key]}</span>}</div>)}
                   </div>
                 )}

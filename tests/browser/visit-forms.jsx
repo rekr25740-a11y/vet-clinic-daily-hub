@@ -11,7 +11,7 @@ const root=createRoot(document.getElementById('visit-tests'));
 const frame=()=>new Promise(resolve=>requestAnimationFrame(resolve));
 const assert=(condition,message)=>{if(!condition)throw Error(message);};
 const field=name=>document.querySelector(`[name="${name}"]`);
-const keys=new Set();
+const keys=new Set();let mountCount=0;
 async function edit(name,value){
  const control=field(name);assert(control,`Missing ${name}`);
  const proto=control instanceof HTMLSelectElement?HTMLSelectElement.prototype:control instanceof HTMLTextAreaElement?HTMLTextAreaElement.prototype:HTMLInputElement.prototype;
@@ -24,12 +24,12 @@ async function mount(service,reason,{clear=true}={}){
  const appt={id:`fixture-${service}`,petId:pet.id,vetId:'fixture-vet',date:today(),status:'In consultation',service,reason,intakeVitals:{weight:5,temp:38}};
  const key=soapDraftKey('fixture-vet',appt.id,pet.id);keys.add(key);if(clear)localStorage.removeItem(key);
  const db={...emptyClinicState(),pets:[pet],owners:[{id:pet.ownerId,name:'Synthetic owner'}],appts:[appt]};
- flushSync(()=>root.render(<SoapConsultationModal key={`${service}-${reason}-${clear}`} appt={appt} pet={pet} db={db} me={{id:'fixture-vet',role:'vet',name:'Synthetic vet'}} setDb={()=>{}} onClose={()=>{}} />));
+ flushSync(()=>root.render(<SoapConsultationModal key={++mountCount} appt={appt} pet={pet} db={db} me={{id:'fixture-vet',role:'vet',name:'Synthetic vet'}} setDb={()=>{}} onClose={()=>{}} />));
  await frame();await frame();
 }
 async function run(){
- const originalGet=api.get,originalPost=api.post;
- api.get=async path=>path==='/api/services/prices'?{dewormingProducts:[{id:'fixture-product',name:'Synthetic dewormer',lots:[{batch:'SYNTHETIC-EXPIRED',expiresOn:'2000-01-01'},{batch:'SYNTHETIC-LOT',expiresOn:'2099-12-31'}]}],catalog:[{id:'srv_groom',name:'Grooming',price:100},{id:'srv_deworm',name:'Deworming',price:250},{id:'srv_rabies',name:'Anti-rabies',price:250}]}:path==='/api/clinical/note-options'?{options:{diagnosis:[],treatment:[]}}:{visits:[]};
+ const originalGet=api.get,originalPost=api.post;let legacyCatalog=false;
+ api.get=async path=>path==='/api/services/prices'?{...(!legacyCatalog ? {dewormingProducts:[{id:'fixture-product',name:'Synthetic dewormer',lots:[{batch:'SYNTHETIC-EXPIRED',expiresOn:'2000-01-01'},{batch:'SYNTHETIC-LOT',expiresOn:'2099-12-31'}]}]} : {}),catalog:[{id:'srv_groom',name:'Grooming',price:100},{id:'srv_deworm',name:'Deworming',price:250},{id:'srv_rabies',name:'Anti-rabies',price:250}]}:path==='/api/clinical/note-options'?{options:{diagnosis:[],treatment:[]}}:{visits:[]};
  api.post=async()=>{throw Error('Fixture must never write clinical data');};
  try{
   await mount('checkup','Skin or ear problem');
@@ -80,7 +80,18 @@ async function run(){
   await toggle('scheduleApproved');assert(field('scheduleApproved').checked,'Calculated schedule still accepts vet approval');
   await toggle('dewormingManual');await edit('intervalDays','21');assert(!field('scheduleApproved').checked,'Manual change must invalidate approval');
   await toggle('giveVaccine');assert(field('diagnosis').closest('details').open,'Deferred care must expose notes');
-  return {passed:true,checks:['live history limits','draft recovery','live weight and assessment','vaccination documentation','due-date calculation','approval invalidation','series validation','grooming confirmation and deferral','collapsed confirmed-care notes','automatic deworming schedule','configured product lot autofill','expired lot exclusion','reason-specific care plan','symptom duration','follow-up calculation']};
+  legacyCatalog=true;
+  await mount('deworming','Routine deworming');await toggle('giveVaccine');
+  assert(!field('batch'),'Optional batch field must be hidden');
+  assert([...field('brand').options].some(o=>o.value==='canex'),'Legacy catalog must offer clinic brands');
+  await edit('brand','canex');assert(field('brand').value==='canex','Canex selection must remain selected');
+  await edit('brand','drontal');assert(field('brand').value==='drontal','Brand must be changeable');
+  await edit('brand','other');await edit('otherBrand','Actual custom product');
+  assert(field('otherBrand').value==='Actual custom product','Custom brand must remain editable');
+  await edit('brand','canex');
+  await mount('deworming','Routine deworming',{clear:false});
+  assert(field('brand').value==='canex','Brand selection must survive draft recovery');
+  return {passed:true,checks:['live history limits','draft recovery','live weight and assessment','vaccination documentation','due-date calculation','approval invalidation','series validation','grooming confirmation and deferral','collapsed confirmed-care notes','automatic deworming schedule','configured product lot autofill','expired lot exclusion','reason-specific care plan','symptom duration','follow-up calculation','legacy product choices','brand switching and recovery','optional batch hidden']};
  }finally{flushSync(()=>root.unmount());api.get=originalGet;api.post=originalPost;for(const key of keys)localStorage.removeItem(key);}
 }
 window.visitFormResult=run().then(result=>{document.getElementById('results').textContent=JSON.stringify(result,null,2);return result;}).catch(error=>{document.getElementById('results').textContent=error.stack;throw error;});

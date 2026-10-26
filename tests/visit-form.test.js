@@ -60,3 +60,22 @@ test('vaccine form starts with the requested vaccine, and unknown requests requi
  for(const [reason,vaccine] of [['Vaccination: Feline 4-in-1','Feline 4-in-1'],['Vaccination: 5-in-1','5-in-1'],['Vaccination: Bordetella','Kennel cough'],['Vaccination: Anti-rabies','Anti-rabies'],['Vaccination: Ask the veterinarian which vaccine is needed','']])assert.equal(initialVaccineForVisit({service:'vaccination',reason}),vaccine);
  assert.equal(initialVaccineForVisit({service:'deworming',reason:'Routine deworming'}),'Deworming');
 });
+
+test('confirmed deworming generates visit documentation and recalculates from the administration date',()=>{
+ const visit={...appointment,service:'deworming'};
+ const dose={...form,diagnosis:'',treatment:'',giveVaccine:true,vaccine:'Deworming',brand:'Recorded product',batch:'Recorded lot',doseNo:'1',doseOf:'1',intervalDays:'14',scheduleApproved:true};
+ const fields=visitClinicalFields(dose,visit);
+ assert.deepEqual(validateSoapFields(fields,'2026-10-25'),{});
+ assert.match(fields.diagnosis,/Veterinarian confirmed/);
+ assert.match(fields.treatment,/Recorded product/);
+ assert.match(fields.treatment,/2026-11-08/);
+ assert.match(visitClinicalFields({...dose,date:'2026-10-20',treatment:'Custom instructions'},visit).treatment,/2026-11-03.*\nCustom instructions/);
+ assert.match(visitClinicalFields({...dose,intervalDays:'30'},visit).treatment,/2026-11-24/);
+ assert.equal(clinicalCharges([], {vaccine:'Deworming'}).length,1);
+ const deferred=visitClinicalFields({...dose,giveVaccine:false},visit);
+ assert.equal(deferred.treatment,'');assert.equal(deferred.diagnosis,'');
+ const errors=validateSoapFields(deferred,'2026-10-25');
+ assert.ok(errors.diagnosis);assert.ok(errors.treatment);
+ assert.equal(clinicalCharges([],null).length,0);
+ assert.ok(validateSoapFields(visitClinicalFields({...dose,scheduleApproved:false},visit),'2026-10-25').scheduleApproved);
+});

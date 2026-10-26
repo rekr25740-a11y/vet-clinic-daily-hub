@@ -76,8 +76,8 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
     // Vaccine administration
     giveVaccine: false,
     vaccine: initialVaccineForVisit(appt),
-    doseNo: "",
-    doseOf: "",
+    doseNo: formType==='deworming' ? "1" : "",
+    doseOf: formType==='deworming' ? "1" : "",
     intervalDays: "",
     scheduleApproved: false,
     brand: "",
@@ -94,7 +94,7 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
   const draftState = useSoapDraft({userId:me.id, appt, petId:pet.id, initialForm,
     consultationId:consultationId.current, vaccinationId:vaccinationId.current, expectedVisit:intakeVisitSnapshot(appt)});
   const {form:storedForm, prescriptionItems, performedServices, expectedVisit} = draftState.draft;
-  const f={...storedForm,giveVaccine:preventive && storedForm.giveVaccine,scheduleFollowUp:consultation && storedForm.scheduleFollowUp,
+  const f={...storedForm,...(formType==='deworming' ? {doseNo:storedForm.doseNo ?? '1',doseOf:storedForm.doseOf ?? '1'} : {}),giveVaccine:preventive && storedForm.giveVaccine,scheduleFollowUp:consultation && storedForm.scheduleFollowUp,
     vaccine:formType==='deworming' ? 'Deworming' : storedForm.vaccine==='Deworming' ? '' : storedForm.vaccine};
   const clinicalForm=visitClinicalFields(f,appt);
   consultationId.current = draftState.draft.consultationId;
@@ -486,11 +486,19 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
                 {f.date<TODAY && <label>Reason for historical consultation date *<input {...validation.field("backdateReason")} maxLength={500} value={f.backdateReason || ""} onChange={e=>set("backdateReason",e.target.value)} />{validation.feedback("backdateReason")}</label>}
               </div>
 
+              {formType==='deworming' && <div style={{gridColumn:'1/-1'}}>                <label style={{ display: "flex", gap: "10px", alignItems: "center", cursor: "pointer", fontWeight: "700", color: "#166534" }}>
+                  <input
+                    type="checkbox"
+                    name="giveVaccine" checked={f.giveVaccine}
+                    onChange={e => set("giveVaccine", e.target.checked)}
+                  />
+                  <span>{formType==='deworming' ? 'Patient assessed as suitable — confirm deworming was given' : 'Record vaccine given and approve the next booster schedule'}</span>
+                </label><p>Leave unchecked if treatment was deferred; record the reason and next steps below.</p></div>}
               <div className="fld full" style={{ gridColumn: "1/-1" }}>
-                <label htmlFor="soap-diagnosis"><b>{consultation ? 'A - Assessment (Diagnosis)' : formType==='grooming' ? 'Condition / suitability for grooming' : 'Suitability assessment / reason for deferral'}</b><i> *</i></label>
-                {optionsError && <p role="alert">Choices could not load. You can still type your notes. <button type="button" onClick={() => retryOptions(n => n + 1)}>Retry choices</button></p>}
+                <label htmlFor="soap-diagnosis"><b>{consultation ? 'A - Assessment (Diagnosis)' : formType==='deworming' ? (f.giveVaccine ? 'Additional assessment notes (optional)' : 'Reason for deferral / assessment') : formType==='grooming' ? 'Condition / suitability for grooming' : 'Suitability assessment / reason for deferral'}</b>{!(formType==='deworming' && f.giveVaccine) && <i> *</i>}</label>
+                {consultation && optionsError && <p role="alert">Choices could not load. You can still type your notes. <button type="button" onClick={() => retryOptions(n => n + 1)}>Retry choices</button></p>}
                 {consultation && <NoteShortcuts field="diagnosis" label="Diagnosis suggestions" options={noteOptions.diagnosis} value={f.diagnosis} onChange={value => set("diagnosis", value)} />}
-                <p id="soap-diagnosis-hint" className="soap-note-label">{consultation ? 'Record the diagnosis or differential diagnoses supported by your findings. Review any suggested text for this patient.' : 'Record whether this patient is suitable for the requested care, or explain why it is deferred.'}</p>
+                <p id="soap-diagnosis-hint" className="soap-note-label">{consultation ? 'Record the diagnosis or differential diagnoses supported by your findings. Review any suggested text for this patient.' : formType==='deworming' && f.giveVaccine ? 'Your confirmation above records suitability automatically. Add findings only when needed.' : 'Record whether this patient is suitable for the requested care, or explain why it is deferred.'}</p>
                   <textarea
                     id="soap-diagnosis"
                     rows={2}
@@ -506,9 +514,9 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
               </div>
 
               <div className="fld full" style={{ gridColumn: "1/-1" }}>
-                <label htmlFor="soap-treatment"><b>{consultation ? 'P - Plan (Treatment & In-Clinic Procedures)' : 'Care provided / after-care instructions'}</b><i> *</i></label>
+                <label htmlFor="soap-treatment"><b>{consultation ? 'P - Plan (Treatment & In-Clinic Procedures)' : formType==='deworming' && f.giveVaccine ? 'Additional deworming / after-care instructions (optional)' : 'Care provided / after-care instructions'}</b>{!(formType==='deworming' && f.giveVaccine) && <i> *</i>}</label>
                 {consultation && <NoteShortcuts field="treatment" label="Treatment suggestions" options={noteOptions.treatment} value={f.treatment} onChange={value => set("treatment", value)} />}
-                <p id="soap-treatment-hint" className="soap-note-label">Enter your treatment plan and patient-specific instructions here. Review and edit any added text for this patient.</p>
+                <p id="soap-treatment-hint" className="soap-note-label">{formType==='deworming' && f.giveVaccine ? 'The treatment, administration date and next due date are added automatically. Add patient-specific instructions if needed.' : 'Enter your treatment plan and patient-specific instructions here. Review and edit any added text for this patient.'}</p>
                   <textarea
                     id="soap-treatment"
                     rows={2}
@@ -551,14 +559,14 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
 
               {/* Administration is shown only for preventive visits. */}
               {preventive && <div style={{ gridColumn: "1/-1", background: "#f0fdf4", border: "1px solid #bbf7d0", padding: "14px", borderRadius: "12px", marginTop: "4px" }}>
-                <label style={{ display: "flex", gap: "10px", alignItems: "center", cursor: "pointer", fontWeight: "700", color: "#166534" }}>
+                {formType!=='deworming' && <>                <label style={{ display: "flex", gap: "10px", alignItems: "center", cursor: "pointer", fontWeight: "700", color: "#166534" }}>
                   <input
                     type="checkbox"
                     name="giveVaccine" checked={f.giveVaccine}
                     onChange={e => set("giveVaccine", e.target.checked)}
                   />
-                  <span>{formType==='deworming' ? 'Record deworming given and approve the next schedule' : 'Record vaccine given and approve the next booster schedule'}</span>
-                </label>
+                  <span>{formType==='deworming' ? 'Patient assessed as suitable — confirm deworming was given' : 'Record vaccine given and approve the next booster schedule'}</span>
+                </label></>}
 
                 {f.giveVaccine && (
                   <div className="soap-fields" style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)", gap: "10px", marginTop: "12px" }}>
@@ -572,7 +580,7 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
                     </div>
 
                     <div className="fld">
-                      <label htmlFor="booster-interval">Vet-selected interval (days)<i> *</i></label>
+                      <label htmlFor="booster-interval">{formType==='deworming' ? 'Repeat after (days)' : 'Vet-selected interval (days)'}<i> *</i></label>
                       <input id="booster-interval" aria-invalid={!!errs.intervalDays} aria-describedby="soap-interval-error" type="number" min="1" max="3650" step="1" name="intervalDays" value={f.intervalDays} onChange={e => set("intervalDays", e.target.value)} />
                       {errs.intervalDays && <span id="soap-interval-error" className="err" aria-live="polite">{errs.intervalDays}</span>}
                       <label htmlFor="booster-due">{formType==='deworming' ? 'Next treatment due date' : 'Calculated Booster Due Date'}</label>
@@ -585,8 +593,11 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
                       />
                     </div>
 
+                    {formType==='deworming' && <p style={{gridColumn:'1/-1'}}>One administration for {pet.name} is recorded for this visit. This is not a tablet quantity or medicine dosage. The next due date is calculated from the care date plus your selected interval.</p>}
+                    <details style={{gridColumn:'1/-1'}} open={formType==='deworming' && !errs.doseNo && !errs.doseOf ? undefined : true}><summary>{formType==='deworming' ? `Treatment series (optional) · ${f.doseNo} of ${f.doseOf}` : 'Vaccination series'}</summary>
                     <label>Dose number in current series<input type="number" min="1" max="20" step="1" aria-invalid={!!errs.doseNo} aria-describedby="soap-doseNo-error" name="doseNo" value={f.doseNo} onChange={e => set("doseNo", e.target.value)} />{errs.doseNo && <span id="soap-doseNo-error" className="err" aria-live="polite">{errs.doseNo}</span>}</label>
                     <label>Total planned doses in series<input type="number" min="1" max="20" step="1" aria-invalid={!!errs.doseOf} aria-describedby="soap-doseOf-error" name="doseOf" value={f.doseOf} onChange={e => set("doseOf", e.target.value)} />{errs.doseOf && <span id="soap-doseOf-error" className="err" aria-live="polite">{errs.doseOf}</span>}</label>
+                    </details>
                     <div style={{gridColumn:"1/-1"}}>
                       <p>Administration: {f.date} · Birth date: {pet.birth || 'Not recorded'}. Review prior doses in Digital EMR History before selecting the interval.</p>
                       <label className="service-check"><input type="checkbox" aria-invalid={!!errs.scheduleApproved} aria-describedby="soap-scheduleApproved-error" name="scheduleApproved" checked={f.scheduleApproved} onChange={e => set("scheduleApproved", e.target.checked)} /> I approve this interval for the patient's species, age, prior doses and the administered product.</label>
@@ -597,13 +608,14 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
                       <label htmlFor="soap-brand">{formType==='deworming' ? 'Product brand' : 'Vaccine Brand'}</label>
                       <input
                         type="text"
-                        placeholder="e.g. Defensor 3, Vanguard"
+                        placeholder={formType==='deworming' ? "Enter the product actually used" : "e.g. Defensor 3, Vanguard"}
                         id="soap-brand" aria-invalid={!!errs.brand} aria-describedby="soap-brand-error" name="brand" value={f.brand}
                         onChange={e => set("brand", e.target.value)}
                       />
                       {errs.brand && <span id="soap-brand-error" className="err" aria-live="polite">{errs.brand}</span>}
                     </div>
 
+                    {formType==='deworming' && <p style={{gridColumn:'1/-1'}}>Enter the brand and lot from the administered product's packaging. The service catalog has no stock lots to fill these automatically.</p>}
                     <div className="fld">
                       <label htmlFor="soap-batch">Batch / Lot Number</label>
                       <input

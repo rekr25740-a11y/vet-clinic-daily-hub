@@ -1,6 +1,6 @@
 import {VACCINE_CHOICES,vaccineIdFromReason} from './vaccineBooking.js';
 import { serviceOf } from './booking.js';
-import { VACCINE_SERVICE } from './clinicalWorkflow.js';
+import { boosterDate, VACCINE_SERVICE } from './clinicalWorkflow.js';
 
 export function visitFormType(appointment) {
   const service = serviceOf(appointment);
@@ -27,6 +27,12 @@ export function visitClinicalFields(form, appointment) {
   const summary = intakeSummary(appointment.intakeVitals);
   const notes = (form.objective || '').trim();
   return {...form,
+    diagnosis:type==='deworming' && form.giveVaccine ? ['Veterinarian confirmed suitability for deworming.',form.diagnosis].filter(Boolean).join('\n') : form.diagnosis,
+    treatment:type==='deworming' && form.giveVaccine ? [
+      `Deworming administered on ${form.date}${form.brand?.trim() ? ` using ${form.brand.trim()}` : ''}.`,
+      boosterDate(form.date,form.intervalDays) ? `Next deworming due ${boosterDate(form.date,form.intervalDays)} (${form.intervalDays} days after administration).` : '',
+      form.treatment,
+    ].filter(Boolean).join('\n') : form.treatment,
     symptoms:consultation ? form.symptoms : `Reason for visit: ${appointment.reason || visitFormTitle(type)}`,
     objective:notes.startsWith(summary) ? notes : [summary,notes].filter(Boolean).join('\n'),
     giveVaccine:['vaccination','deworming'].includes(type) && form.giveVaccine,

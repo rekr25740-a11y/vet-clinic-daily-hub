@@ -1396,3 +1396,7 @@ patient checkout amounts/admission holds and checkout waiting behind a native
 rejection dialog. It also checks that a patient's active arrival takes precedence
 over an earlier completed visit. See [the clinic process](docs/PROCESS.md) for the
 current online, walk-in, admission and payment handoffs.
+
+### Deworming visit shortcuts
+
+The veterinarian explicitly confirms suitability and actual administration. For confirmed deworming, the record generates the suitability statement, treatment date, product (when entered), and next due date; additional findings and after-care instructions are optional. Deferred visits still require assessment and next steps. New visits default to one administration (1 of 1), with optional series editing; these counts are not tablet quantities or a calculated medicine dose. The next due date is the care date plus the veterinarian-approved interval. Brand and lot remain actual-package entries because the service catalog contains no stock-lot inventory.

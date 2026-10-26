@@ -1,5 +1,7 @@
 import {resolveAdministrationLot} from '../administrationLot.js';
 import {dewormingProducts} from '../dewormingProducts.js';
+import {vaccinationProducts} from '../vaccinationProducts.js';
+import {matchingVaccinationProducts} from '../../src/vaccinationProducts.js';
 import {ownerAccountLinkRouter} from './ownerAccountLink.js';
 import {resolveWalkInOwner} from '../walkInOwner.js';
 import {vaccinationCardFieldErrors} from '../../src/vaccinationCardFields.js';
@@ -1365,7 +1367,7 @@ clinicRouter.delete("/appointments/:id", async (req, res) => {
 
 
 clinicRouter.get("/services/prices", (req, res) => {
-  res.json({ success: true, catalog: priceCatalog(), dewormingProducts: dewormingProducts() });
+  res.json({ success: true, catalog: priceCatalog(), dewormingProducts: dewormingProducts(), vaccinationProducts:vaccinationProducts() });
 });
 
 clinicRouter.post("/appointments/:id/billing", async (req, res) => {
@@ -1828,7 +1830,7 @@ clinicRouter.delete("/vaccinations/:id", async (req, res) => {
 clinicRouter.post("/consultations", async (req, res) => {
   const { id, petId, apptId, date, symptoms, objective, diagnosis, treatment, prescription, weight } = req.body;
   let vaccination=req.body.vaccination;
-  try { vaccination=resolveAdministrationLot(vaccination,date); } catch(error) {return res.status(error.status || 500).json({error:error.status ? error.message : "Unable to load deworming products."});}
+  try { vaccination=resolveAdministrationLot(vaccination,date); } catch(error) {return res.status(error.status || 500).json({error:error.status ? error.message : "Unable to load clinic products."});}
   const cardFieldErrors=vaccinationCardFieldErrors({...vaccination,...(req.body.microchip?{microchipNumber:req.body.microchip.number,microchipDate:req.body.microchip.date}:{})},clinicClock().date);
   if(Object.keys(cardFieldErrors).length)return res.status(400).json({error:Object.values(cardFieldErrors)[0],errors:cardFieldErrors});
   if(req.body.microchip && (typeof req.body.microchip.number!=='string' || !req.body.microchip.number.trim()))return res.status(400).json({error:'Enter the microchip number.'});
@@ -1864,8 +1866,12 @@ clinicRouter.post("/consultations", async (req, res) => {
       if (date < toDateStr(appt.date)) throw bookingError("The consultation date cannot be before the linked visit.");
       const backdateReason=req.body.backdateReason;
       if(date<clinicClock().date && (typeof backdateReason!=='string' || backdateReason.trim().length<5 || backdateReason.length>500 || !/[\p{L}]/u.test(backdateReason))) throw bookingError("Explain why this historical consultation date is being recorded (5–500 characters).");
-      const patient = (await client.query("SELECT birth, vaccination_card_id FROM pets WHERE id = $1 FOR UPDATE", [petId])).rows[0];
+      const patient = (await client.query("SELECT birth, species, vaccination_card_id FROM pets WHERE id = $1 FOR UPDATE", [petId])).rows[0];
       if (!patient) throw bookingError("Patient record not found.",404);
+      if(vaccination?.vaccinationProductId){
+        const product=vaccinationProducts().find(p=>p.id===vaccination.vaccinationProductId);
+        if(!product||!matchingVaccinationProducts([product],vaccination.vaccine,patient.species).length)throw bookingError('Select a vaccination product for this patient’s species and vaccine.');
+      }
       patient.vaccination_card_id=await internalCardReference(client,petId,patient.vaccination_card_id);
       if(req.body.microchip){
         if(req.body.microchip.date && req.body.microchip.date<toDateStr(patient.birth))throw bookingError('The microchip date cannot be before the patient’s birth.');

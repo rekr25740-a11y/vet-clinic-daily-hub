@@ -1,10 +1,11 @@
 import {VaccineEstimate} from '../components/VaccineBooking.jsx';
 import {PaginatedList} from '../components/Pagination.jsx';
-import {useState} from 'react';
+import {useEffect,useState} from 'react';
+import {arrivalLists,arrivalPastDue,arrivalTimeLabel} from '../arrivalTiming.js';
+import {useSubmissionReview} from '../components/SubmissionReview.jsx';
 import {CalendarCheck,CalendarDays,PawPrint} from 'lucide-react';
 import {pendingVisitApprovals,registrationsWithoutVisit} from '../assistantWorkflow.js';
-import {chronologicalAppointments} from '../appointmentOrder.js';
-import {fmt12,today} from '../booking.js';
+import {today} from '../booking.js';
 import ClinicDialog from '../components/ClinicDialog.jsx';
 import {ExternalHistorySummary} from '../components/ExternalHistory.jsx';
 import {approvalVisit} from '../appointmentStatus.js';
@@ -19,7 +20,7 @@ export function RequestReview({snapshot,db,onClose,onConfirm,onReject,confirming
   const expired=visit.date<today(), declined=registration?.status==='Declined';
   const validation=useFormValidation({checked:checked?'':'Confirm you reviewed the patient details and requested visit.'});
   return <ClinicDialog label="View appointment request details" onClose={confirming?()=>{}:onClose}><section className="card admission-form"> <h2>Appointment request details</h2>
-    <p><b>{patient?.name || 'Patient'}</b> · {visit.date} at {visit.time?fmt12(visit.time):'Time not recorded'} · {vet?.name || 'Veterinarian not recorded'}</p>
+    <p><b>{patient?.name || 'Patient'}</b> · {visit.date} at {visit.time?arrivalTimeLabel(visit.time):'Time not recorded'} · {vet?.name || 'Veterinarian not recorded'}</p>
     <h3>Requested visit</h3><dl className="op-dl">{[['Service',visit.service || 'Consultation'],['Reason / symptoms',visit.reason],['Owner notes',visit.notes || 'None'],['Owner',owner?.name],['Contact',owner?.phone || owner?.email],['Registration',registration?.status || patient?.registrationStatus || 'Verified']].map(([k,v])=><div key={k}><dt>{k}</dt><dd>{v || 'Not recorded'}</dd></div>)}</dl><VaccineEstimate appointment={visit} />
     <h3>Submitted patient details</h3>{patient?.photo && <img src={patient.photo} alt={`${patient.name} registration`} width="100" height="100" style={{objectFit:'cover'}} />}
     <dl className="op-dl">{[['Species',patient?.speciesOther || patient?.species],['Breed',patient?.breed],['Sex',patient?.sex],['Birth date',patient?.birth],['Reported weight',`${patient?.weight ?? 'Unknown'} kg · ${registration?'owner registration report':'see measured history in patient record'}`],['Spayed / neutered',patient?.neutered],['Color',patient?.color],['Dental status',patient?.dentalOcclusion],['Registration notes',patient?.notes]].map(([k,v])=><div key={k}><dt>{k}</dt><dd>{v || 'Not recorded'}</dd></div>)}</dl>
@@ -35,29 +36,42 @@ export function RequestReview({snapshot,db,onClose,onConfirm,onReject,confirming
     </form>
   </section></ClinicDialog>;
 }
-export default function FrontDeskApprovals({db,onReviewPet,onOpenCard,onCalendar,onConfirm,onReject,confirming,error}) {
+export default function FrontDeskApprovals({db,onReviewPet,onOpenCard,onCalendar,onConfirm,onReject,onNoShow,confirming,error}) {
   const [view,setView]=useState('visits'),[review,setReview]=useState(null);
+  const [,tick]=useState(0);
+  useEffect(()=>{const timer=setInterval(()=>tick(n=>n+1),15000);const refresh=()=>tick(n=>n+1);window.addEventListener('focus',refresh);return()=>{clearInterval(timer);window.removeEventListener('focus',refresh);};},[]);
+  const missedReview=useSubmissionReview(db.appts);
+  const [saving,setSaving]=useState('');
   const visits=pendingVisitApprovals(db.appts), pets=registrationsWithoutVisit(db);
-  const arrivals=db.appts.filter(a=>a.status==='Scheduled' && a.date>=today()).sort(chronologicalAppointments);
+  const {upcoming:arrivals,overdue}=arrivalLists(db.appts);
+  const markNoShow=async a=>{
+    if(saving||!arrivalPastDue(a))return;
+    if(!await missedReview.ask({title:'Review missed visit',confirmLabel:'Confirm no-show',description:'Confirm that this patient did not arrive for the saved visit.',fields:[['Patient',db.pets.find(p=>p.id===a.petId)?.name || 'Patient'],['Visit',`${a.date} ${arrivalTimeLabel(a.time)}`]]}))return;
+    setSaving(a.id);try{await onNoShow(a);}finally{setSaving('');}
+  };
   const open=a=>{
     const pet=db.pets.find(p=>p.id===a.petId),registration=db.petRequests.find(r=>r.petId===a.petId && r.status!=='Approved');
     setReview({visit:approvalVisit(db,a),patient:registration || pet,registration,owner:db.owners.find(o=>o.id===(pet?.ownerId || a.ownerId)),vet:db.vets.find(v=>v.id===a.vetId)});
   };
   return <>
     <section className="card sf-approvals" aria-labelledby="approval-heading">
-      <div className="sf-section-hd"><div><span className="sf-eyebrow">Reception inbox · review first</span><h2 id="approval-heading">Pending Appointment Requests <span className="sf-pill">{visits.length}</span></h2><p>Open the complete request before approving. Pet registration and booking are reviewed together, including each additional pet.</p></div><button className="btn ghost sm" onClick={onCalendar}><CalendarDays size={16} aria-hidden="true" />Open calendar</button></div>
+      <div className="sf-section-hd"><div><span className="sf-eyebrow">Reception inbox · review first</span><h2 id="approval-heading">Pending Appointment Requests <span className="sf-pill">{visits.length}</span></h2><p>Open the complete request before approving. Pet registration and booking are reviewed together, including each additional pet.</p></div><button className="btn ghost sm" onClick={()=>onCalendar()}><CalendarDays size={16} aria-hidden="true" />Open calendar</button></div>
       <div className="sf-approval-tabs" aria-label="Approval categories"><button className="btn sm" aria-pressed={view==='visits'} onClick={()=>setView('visits')}><CalendarCheck size={17} aria-hidden="true" />Visit requests ({visits.length})</button><button className="btn sm" aria-pressed={view==='pets'} onClick={()=>setView('pets')}><PawPrint size={17} aria-hidden="true" />Pets without a visit ({pets.length})</button></div>
       {error && !review && <p className="err" role="alert">{error}</p>}
       <PaginatedList className="sf-approval-list" label="Clinic approvals" resetKey={view}>
         {view==='visits'?visits.length?visits.map(a=>{
           const p=db.pets.find(p=>p.id===a.petId),o=db.owners.find(o=>o.id===(p?.ownerId || a.ownerId));
-          return <article className="sf-approval-item" key={a.id}><div className="sf-approval-date"><CalendarDays size={18} aria-hidden="true" /><b>{a.date}</b><span>{a.time?fmt12(a.time):'Time not recorded'}</span></div><div className="sf-body"><h3>{p?.name || a.petName || 'Patient'}</h3><p>{a.reason || a.service}</p><p>{db.vets.find(v=>v.id===a.vetId)?.name || 'Veterinarian not recorded'}</p>{a.notes&&<p>{a.notes}</p>}<p>{o?.name || 'Owner'} · {o?.phone || o?.email || 'No contact on file'}</p><p>{p?.registrationStatus==='Pending'?'New pet · registration reviewed with this booking':'Verified patient'}</p>{a.date<today()&&<p className="err">Past requested date · needs rescheduling or a decision</p>}</div><div className="sf-approval-actions"><span className="sf-pill wa">Pending Approval</span><button className="btn gold sm" onClick={()=>open(a)}>View request details</button></div></article>;
+          return <article className="sf-approval-item" key={a.id}><div className="sf-approval-date"><CalendarDays size={18} aria-hidden="true" /><b>{a.date}</b><span>{a.time?arrivalTimeLabel(a.time):'Time not recorded'}</span></div><div className="sf-body"><h3>{p?.name || a.petName || 'Patient'}</h3><p>{a.reason || a.service}</p><p>{db.vets.find(v=>v.id===a.vetId)?.name || 'Veterinarian not recorded'}</p>{a.notes&&<p>{a.notes}</p>}<p>{o?.name || 'Owner'} · {o?.phone || o?.email || 'No contact on file'}</p><p>{p?.registrationStatus==='Pending'?'New pet · registration reviewed with this booking':'Verified patient'}</p>{a.date<today()&&<p className="err">Past requested date · needs rescheduling or a decision</p>}</div><div className="sf-approval-actions"><span className="sf-pill wa">Pending Approval</span><button className="btn gold sm" onClick={()=>open(a)}>View request details</button></div></article>;
         }):<div className="sf-approval-empty"><b>No visit requests awaiting approval</b><span>New bookings appear here before the clinic confirms them.</span></div>
         :pets.length?pets.map(p=><article className="sf-approval-item" key={p.id}><div className="sf-body"><h3>{p.name}</h3><p>{p.species} · {p.breed || 'Breed not recorded'}</p><p>No pending booking. Verify these details here, or review them together when the owner requests a visit.</p></div><button className="btn sm" onClick={()=>onReviewPet(p)}>Review registration details</button></article>):<div className="sf-approval-empty"><b>No registrations without a visit</b><span>Booked pets are reviewed in Visit requests.</span></div>}
       </PaginatedList>
     </section>
-    <section className="card sf-approvals" aria-label="Confirmed upcoming visits"><div className="sf-section-hd"><div><span className="sf-eyebrow">Confirmed · nearest date first</span><h2>Expected arrivals and upcoming visits ({arrivals.length})</h2><p>Approved appointments stay visible here. Today’s arrivals can proceed to check-in from the patient record.</p></div><button className="btn sm ghost" onClick={onCalendar}>Appointments and calendar</button></div>
-      <PaginatedList className="sf-approval-list" label="Confirmed upcoming visits">{arrivals.map(a=>{const p=db.pets.find(p=>p.id===a.petId);return <article className="sf-approval-item" key={a.id}><div className="sf-approval-date"><b>{a.date}</b><span>{a.time?fmt12(a.time):'Time not recorded'}</span></div><div className="sf-body"><h3>{p?.name || 'Patient'}</h3><p>{a.reason || a.service}</p><p>{db.owners.find(o=>o.id===p?.ownerId)?.name || 'Owner'} · Scheduled</p></div><button className="btn sm" onClick={()=>onOpenCard(a.petId,a)}>View patient / check-in</button></article>;})}</PaginatedList>{!arrivals.length&&<p>No confirmed upcoming visits.</p>}
+    {!!overdue.length && <section className="card sf-approvals" aria-label="Overdue arrivals"><div className="sf-section-hd"><div><h2>Awaiting arrival · scheduled time passed ({overdue.length})</h2><p>Confirm arrival, reschedule, or mark no-show after checking that the patient did not arrive.</p></div></div>
+      <PaginatedList className="sf-approval-list" label="Overdue arrivals">{overdue.map(a=><article className="sf-approval-item" key={a.id}><div className="sf-approval-date"><b>{a.date}</b><span>{arrivalTimeLabel(a.time)}</span></div><div className="sf-body"><h3>{db.pets.find(p=>p.id===a.petId)?.name || 'Patient'}</h3><p>{a.reason || a.service}</p><span className="sf-pill wa">Awaiting arrival</span>{!arrivalPastDue(a)&&<p>Correct the saved time in the calendar before recording a no-show.</p>}</div><div className="sf-approval-actions">{a.date===today()&&<button className="btn sm" onClick={()=>onOpenCard(a.petId,a)}>Patient / check-in</button>}<button className="btn ghost sm" onClick={()=>onCalendar(a)}>Reschedule</button>{onNoShow&&<button className="btn danger sm" disabled={!!saving || !arrivalPastDue(a)} onClick={()=>markNoShow(a)}>{saving===a.id?'Saving…':'Mark no-show'}</button>}</div></article>)}</PaginatedList>
+    </section>}
+    {missedReview.card}
+    <section className="card sf-approvals" aria-label="Confirmed upcoming visits"><div className="sf-section-hd"><div><span className="sf-eyebrow">Confirmed · nearest date first</span><h2>Expected arrivals and upcoming visits ({arrivals.length})</h2><p>Approved appointments stay visible here. Today’s arrivals can proceed to check-in from the patient record.</p></div><button className="btn sm ghost" onClick={()=>onCalendar()}>Appointments and calendar</button></div>
+      <PaginatedList className="sf-approval-list" label="Confirmed upcoming visits">{arrivals.map(a=>{const p=db.pets.find(p=>p.id===a.petId);return <article className="sf-approval-item" key={a.id}><div className="sf-approval-date"><b>{a.date}</b><span>{a.time?arrivalTimeLabel(a.time):'Time not recorded'}</span></div><div className="sf-body"><h3>{p?.name || 'Patient'}</h3><p>{a.reason || a.service}</p><p>{db.owners.find(o=>o.id===p?.ownerId)?.name || 'Owner'} · Scheduled</p></div><button className="btn sm" onClick={()=>onOpenCard(a.petId,a)}>View patient / check-in</button></article>;})}</PaginatedList>{!arrivals.length&&<p>No confirmed upcoming visits.</p>}
     </section>
     {review&&<RequestReview snapshot={review} db={db} onClose={()=>setReview(null)} onConfirm={onConfirm} onReject={onReject} confirming={!!confirming[review.visit.id]} error={error} />}
   </>;

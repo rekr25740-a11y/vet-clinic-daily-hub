@@ -65,3 +65,9 @@ test('deworming automation preserves a previously entered interval as a custom d
  draft.form.intervalDays='';writeSoapDraft(db,'draft',draft);
  assert.equal(readSoapDraft(db,'draft',initial).form.dewormingManual,false);
 });
+
+test('vaccination automation migrates prior drafts without overwriting custom series and intervals',()=>{
+ const db=storage(),draft=fixture();Object.assign(draft.form,{intervalDays:'21',doseNo:'2',doseOf:'3'});writeSoapDraft(db,'draft',draft);
+ const initial={...form,intervalDays:'',doseNo:'1',doseOf:'1',vaccinationManual:false,vaccinationSeriesManual:false,vaccinationProductId:''};
+ const recovered=readSoapDraft(db,'draft',initial);assert.equal(recovered.form.vaccinationManual,true);assert.equal(recovered.form.vaccinationSeriesManual,true);assert.equal(recovered.form.intervalDays,'21');assert.equal(recovered.form.doseNo,'2');assert.equal(recovered.form.vaccinationProductId,'');
+});

@@ -1,0 +1,8 @@
+import {DEFAULT_VACCINATION_PRODUCTS} from '../src/vaccinationProducts.js';
+import {validDate} from './scheduling.js';
+export function vaccinationProducts(){
+ const products=JSON.parse(process.env.CLINIC_VACCINATION_PRODUCTS_JSON || JSON.stringify(DEFAULT_VACCINATION_PRODUCTS));
+ const text=(v,max)=>typeof v==='string'&&!!v.trim()&&v.length<=max;
+ if(!Array.isArray(products)||products.some(p=>!p||!text(p.id,60)||p.id==='other'||!/^[a-z0-9_-]+$/.test(p.id)||!text(p.name,60)||!Array.isArray(p.vaccines)||!p.vaccines.length||p.vaccines.some(v=>!text(v,80)||v==='Deworming')||!Array.isArray(p.species)||!p.species.length||p.species.some(v=>!text(v,40))||typeof p.manufacturer!=='string'||p.manufacturer.length>100||!Number.isInteger(p.minAgeDays)||p.minAgeDays<0||p.minAgeDays>3650||!Number.isInteger(p.boosterDays)||p.boosterDays<1||p.boosterDays>3650||!Number.isInteger(p.primaryDoses)||p.primaryDoses<1||p.primaryDoses>20||!Number.isInteger(p.primaryIntervalDays)||p.primaryIntervalDays<1||p.primaryIntervalDays>3650||!Array.isArray(p.lots)||p.lots.some(l=>!l||!text(l.batch,60)||!validDate(l.expiresOn)||l.serialNumber!==undefined&&(typeof l.serialNumber!=='string'||l.serialNumber.length>100))||new Set(p.lots.map(l=>l.batch)).size!==p.lots.length)||new Set(products.map(p=>p.id)).size!==products.length)throw new Error('Invalid vaccination product configuration');
+ return products.map(p=>({id:p.id,name:p.name,vaccines:p.vaccines,species:p.species,manufacturer:p.manufacturer,minAgeDays:p.minAgeDays,boosterDays:p.boosterDays,primaryDoses:p.primaryDoses,primaryIntervalDays:p.primaryIntervalDays,lots:p.lots.map(l=>({batch:l.batch,expiresOn:l.expiresOn,...(l.serialNumber?{serialNumber:l.serialNumber}:{})}))}));
+}

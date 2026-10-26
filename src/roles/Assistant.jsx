@@ -104,7 +104,7 @@ function Dash({ db, setDb, me, go, say, navigation, onNavigationHandled }) {
         </div>
       </Hero>
 
-      <FrontDeskApprovals onReject={a=>{setActionError("");setRejecting(a);}} db={db} onReviewPet={setReviewReq} onOpenCard={openCard} onCalendar={() => go("cal")} onConfirm={confirmVisit} confirming={confirming} error={actionError} />
+      <FrontDeskApprovals onReject={a=>{setActionError("");setRejecting(a);}} db={db} onReviewPet={setReviewReq} onOpenCard={openCard} onCalendar={a => go("cal",a?.id?{apptId:a.id,action:"reschedule"}:null)} onNoShow={async a=>{setActionError("");if(await moveAppt(setDb,a.id,"No-show",me,setActionError,a)){say("Visit marked as no-show.");return true;}return false;}} onConfirm={confirmVisit} confirming={confirming} error={actionError} />
       <AdmissionsSummary me={me} go={go} />
       <CareFollowUps db={db} go={go} />
 

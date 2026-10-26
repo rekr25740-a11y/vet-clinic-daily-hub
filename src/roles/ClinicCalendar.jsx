@@ -23,7 +23,7 @@ import { prefill } from "./owner/ui.jsx";
 import { openFollowUps } from "../clinicalWorkflow.js";
 import { useAvailability } from "../useAvailability.js";
 import { lastDay, today as bookingToday, SERVICES, serviceOf, splitReason, openSlots, reservationCovers, addMin, durOf, fmt12 } from "../booking.js";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Calendar,
   Clock,
@@ -94,7 +94,7 @@ export function getServiceCategory(reason = "") {
   return { label: "Consultation & Exam", color: "#1d4ed8", bg: "#eff6ff", border: "#bfdbfe", Icon: Stethoscope };
 }
 
-export default function ClinicCalendar({ db, setDb, me, go, say }) {
+export default function ClinicCalendar({ db, setDb, me, go, say, navigation, onNavigationHandled }) {
   const TODAY = bookingToday();
   const t = new Date(`${TODAY}T00:00:00`);
   const curYearMin = t.getFullYear();
@@ -131,6 +131,13 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
   const [billingAppt, setBillingAppt] = useState(null);
   const [cardPetId, setCardPetId] = useState(null);
   const [cardAppt, setCardAppt] = useState(null);
+  useEffect(()=>{
+    if(navigation?.action!=='reschedule'||!navigation.apptId)return;
+    const visit=db.appts.find(a=>a.id===navigation.apptId);
+    if(canBook&&visit&&['Pending Approval','Scheduled'].includes(visit.status))setBookingSlot({...visit,editing:true});
+    else setActionError('This visit changed. Review its current status before rescheduling.');
+    onNavigationHandled?.();
+  },[navigation]);
 
   const slotsByVet = Object.fromEntries(visibleDoctors.map(([id]) => [id, openSlots(scheduleDb, { vetId: id, date: sel, service: "vaccination" })]));
   const appts = db.appts.filter(a => (!vetFilter || doctorId(a.vetId) === vetFilter) && !["Cancelled","Rejected","No-show"].includes(a.status));

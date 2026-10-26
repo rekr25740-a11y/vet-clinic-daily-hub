@@ -6,7 +6,9 @@ export function readSoapDraft(storage, key, initialForm) {
   if (!raw) return null;
   const draft = JSON.parse(raw);
   if(draft.form && draft.form.dewormingManual===undefined && initialForm.dewormingManual!==undefined) draft.form.dewormingManual=!!draft.form.intervalDays;
-  if(draft.form)for(const key of ['manufacturer','serialNumber','microchipNumber','microchipDate','visitAnswers','dewormingManual','dewormingWeaned','dewormingMonthlyRisk','dewormingProductId','symptomStart','carePlanChoice'])if(draft.form[key]===undefined && initialForm[key]!==undefined)draft.form[key]=initialForm[key];
+  if(draft.form && draft.form.vaccinationManual===undefined && initialForm.vaccinationManual!==undefined)draft.form.vaccinationManual=!!draft.form.intervalDays;
+  if(draft.form && draft.form.vaccinationSeriesManual===undefined && initialForm.vaccinationSeriesManual!==undefined)draft.form.vaccinationSeriesManual=!!(draft.form.doseNo || draft.form.doseOf);
+  if(draft.form)for(const key of ['vaccinationProductId','vaccinationManual','vaccinationSeriesManual','manufacturer','serialNumber','microchipNumber','microchipDate','visitAnswers','dewormingManual','dewormingWeaned','dewormingMonthlyRisk','dewormingProductId','symptomStart','carePlanChoice'])if(draft.form[key]===undefined && initialForm[key]!==undefined)draft.form[key]=initialForm[key];
   if (draft.form?.visitAnswers != null && (typeof draft.form.visitAnswers !== 'object' || Array.isArray(draft.form.visitAnswers) || Object.values(draft.form.visitAnswers).some(value=>typeof value!=='string'))) throw new Error('Invalid visit answers.');
   if (draft.version !== 1 || !Number.isFinite(draft.savedAt)
       || !draft.expectedVisit || !draft.consultationId || !draft.vaccinationId

@@ -64,7 +64,7 @@ async function historyFixture(){
  await query(readFileSync(new URL('../database/state-read-indexes.sql',import.meta.url),'utf8'));
  await query(readFileSync(new URL('../database/state-read-indexes.sql',import.meta.url),'utf8'));
  const day=clinicClock().date;
- for(const [id,pet,doctor,status,date] of [['today','patient-a',v.id,'Completed',day],['overnight','patient-a',v.id,'In consultation','2025-01-01'],['unpaid','patient-a',v.id,'Completed','2025-01-01'],['foreign','patient-b',otherVet.id,'Scheduled',day]])await query("INSERT INTO appointments(id,pet_id,vet_id,date,time,reason,status,billing_status,amount) VALUES($1,$2,$3,$4,'09:00','Synthetic',$5,'Unbilled',100)",[id,pet,doctor,date,status]);
+ for(const [id,pet,doctor,status,date] of [['today','patient-a',v.id,'Completed',day],['older-unarrived','patient-a',v.id,'Scheduled','2025-01-01'],['foreign-older-unarrived','patient-b',otherVet.id,'Scheduled','2025-01-01'],['overnight','patient-a',v.id,'In consultation','2025-01-01'],['unpaid','patient-a',v.id,'Completed','2025-01-01'],['foreign','patient-b',otherVet.id,'Scheduled',day]])await query("INSERT INTO appointments(id,pet_id,vet_id,date,time,reason,status,billing_status,amount) VALUES($1,$2,$3,$4,'09:00','Synthetic',$5,'Unbilled',100)",[id,pet,doctor,date,status]);
  await query("INSERT INTO consultations(id,pet_id,vet_id,appt_id,date,symptoms,objective,diagnosis,treatment) VALUES('today','patient-a',$1,'today','2025-01-01','Saved today','Saved vitals','Saved diagnosis','Saved care')",[v.id]);
  fixture={a,b,v,otherVet,assistant,administrator};return fixture;
 }
@@ -72,7 +72,7 @@ test('summaries bound settled history to five owner payments, retain overnight/u
  const {a,v,assistant,administrator}=await historyFixture();
  for(const actor of [a,v,assistant,administrator]){
   const r=await call('/state/summary',undefined,actor.id);assert.equal(r.status,200,JSON.stringify(r.data));assert.equal(r.data.data.summary,true);const s=r.data.data;
-  assert.ok(s.appts.some(a=>a.id==='overnight'));assert.ok(s.appts.some(a=>a.id==='unpaid'));assert.ok(s.consults.some(c=>c.id==='today' && c.date==='2025-01-01'),'current completed visits retain legitimately backdated saved notes');assert.ok(!s.appts.some(a=>a.id==='history-000'));assert.equal(s.appts.filter(row=>row.id.startsWith('history-')).length,actor===a?5:0);if(actor===a)assert.deepEqual(s.appts.filter(row=>row.id.startsWith('history-')).map(row=>row.id).sort(),['history-108','history-109','history-110','history-111','history-112']);assert.equal(s.totals.consultations,114);assert.equal(s.vaccs.length,1);assert.equal(s.pets.find(p=>p.id==='patient-a').weights.length,1);
+  assert.ok(s.appts.some(a=>a.id==='older-unarrived'));if(actor===a||actor===v)assert.ok(!s.appts.some(a=>a.id==='foreign-older-unarrived'));assert.ok(s.appts.some(a=>a.id==='overnight'));assert.ok(s.appts.some(a=>a.id==='unpaid'));assert.ok(s.consults.some(c=>c.id==='today' && c.date==='2025-01-01'),'current completed visits retain legitimately backdated saved notes');assert.ok(!s.appts.some(a=>a.id==='history-000'));assert.equal(s.appts.filter(row=>row.id.startsWith('history-')).length,actor===a?5:0);if(actor===a)assert.deepEqual(s.appts.filter(row=>row.id.startsWith('history-')).map(row=>row.id).sort(),['history-108','history-109','history-110','history-111','history-112']);assert.equal(s.totals.consultations,114);assert.equal(s.vaccs.length,1);assert.equal(s.pets.find(p=>p.id==='patient-a').weights.length,1);
   if(actor===a||actor===v)assert.ok(!s.pets.some(p=>p.id==='patient-b'));
  }
 });

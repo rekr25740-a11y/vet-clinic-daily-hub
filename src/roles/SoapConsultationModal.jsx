@@ -1,3 +1,5 @@
+import {DEFAULT_VACCINATION_PRODUCTS,vaccinationProductChoices,matchingVaccinationProducts,VACCINATION_REFERENCE} from '../vaccinationProducts.js';
+import {vaccinationSchedule} from '../vaccinationSchedule.js';
 import {DEFAULT_DEWORMING_PRODUCTS,dewormingProductChoices} from '../dewormingProducts.js';
 import {careForProfile,elapsedDays,calculatedFollowUp} from '../visitCare.js';
 import {dewormingSchedule,availableDewormingLots,DEWORMING_REFERENCE} from '../dewormingSchedule.js';
@@ -81,9 +83,10 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
     // Vaccine administration
     giveVaccine: false,
     vaccine: initialVaccineForVisit(appt),
-    doseNo: formType==='deworming' ? "1" : "",
-    doseOf: formType==='deworming' ? "1" : "",
+    doseNo: preventive ? "1" : "",
+    doseOf: preventive ? "1" : "",
     intervalDays: "",dewormingManual:false,dewormingWeaned:false,dewormingMonthlyRisk:false,dewormingProductId:"",
+    vaccinationProductId:"",vaccinationManual:false,vaccinationSeriesManual:false,
     scheduleApproved: false,
     brand: "",
     batch: "",
@@ -101,13 +104,18 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
   const {form:storedForm, prescriptionItems, performedServices, expectedVisit} = draftState.draft;
   const suggestion=dewormingSchedule({date:storedForm.date,birth:pet.birth,species:pet.species,weaned:storedForm.dewormingWeaned,monthlyRisk:storedForm.dewormingMonthlyRisk});
   const [dewormingProducts,setDewormingProducts]=useState(DEFAULT_DEWORMING_PRODUCTS);
-  const selectedProduct=dewormingProducts.find(p=>p.id===storedForm.dewormingProductId);
+  const [vaccinationProducts,setVaccinationProducts]=useState(DEFAULT_VACCINATION_PRODUCTS);
+  const productChoices=formType==='deworming'?dewormingProducts:matchingVaccinationProducts(vaccinationProducts,storedForm.vaccine,pet.species);
+  const productKey=formType==='deworming'?'dewormingProductId':'vaccinationProductId';
+  const selectedProduct=productChoices.find(p=>p.id===storedForm[productKey]);
+  const vaccineSuggestion=formType==='vaccination'?vaccinationSchedule({date:storedForm.date,birth:pet.birth,species:pet.species,vaccine:storedForm.vaccine,product:selectedProduct,history:prevVaccs}):null;
   const availableLots=availableDewormingLots(selectedProduct,storedForm.date);
-  const automaticSchedule=formType==='deworming' && !storedForm.dewormingManual && suggestion;
-  const f={...storedForm,...(automaticSchedule ? {intervalDays:suggestion.intervalDays} : {}),
-    ...(formType==='deworming' && selectedProduct ? {brand:selectedProduct.name,batch:availableLots.length ? (availableLots.some(l=>l.batch===storedForm.batch)?storedForm.batch:availableLots[0].batch) : selectedProduct.lots.some(l=>l.batch===storedForm.batch) ? '' : storedForm.batch} : {}),...(formType==='deworming' ? {doseNo:storedForm.doseNo || '1',doseOf:storedForm.doseOf || storedForm.doseNo || '1'} : {}),giveVaccine:preventive && storedForm.giveVaccine,scheduleFollowUp:consultation && storedForm.scheduleFollowUp,
+  const automaticSchedule=formType==='deworming' ? !storedForm.dewormingManual && suggestion : formType==='vaccination' && !storedForm.vaccinationManual && vaccineSuggestion;
+  const suggestedSchedule=formType==='deworming'?suggestion:vaccineSuggestion;
+  const f={...storedForm,...(automaticSchedule ? {intervalDays:suggestedSchedule.intervalDays} : {}),...(formType==='vaccination' && vaccineSuggestion && !storedForm.vaccinationSeriesManual ? {doseNo:vaccineSuggestion.doseNo,doseOf:vaccineSuggestion.doseOf} : {}),
+    ...(preventive && selectedProduct ? {brand:selectedProduct.name,...(formType==='vaccination'?{manufacturer:selectedProduct.manufacturer || storedForm.manufacturer,serialNumber:availableLots.find(l=>l.batch===(availableLots.some(l=>l.batch===storedForm.batch)?storedForm.batch:availableLots[0]?.batch))?.serialNumber || (selectedProduct.lots.some(l=>l.serialNumber&&l.serialNumber===storedForm.serialNumber)?'':storedForm.serialNumber)}:{}),batch:availableLots.length ? (availableLots.some(l=>l.batch===storedForm.batch)?storedForm.batch:availableLots[0].batch) : selectedProduct.lots.some(l=>l.batch===storedForm.batch) ? '' : storedForm.batch} : {}),...(formType==='deworming' ? {doseNo:storedForm.doseNo || '1',doseOf:storedForm.doseOf || storedForm.doseNo || '1'} : {}),giveVaccine:preventive && storedForm.giveVaccine,scheduleFollowUp:consultation && storedForm.scheduleFollowUp,
     vaccine:formType==='deworming' ? 'Deworming' : storedForm.vaccine==='Deworming' ? '' : storedForm.vaccine};
-  if(formType==='deworming' && (f.batch!==storedForm.batch || f.brand!==storedForm.brand)) f.scheduleApproved=false;
+  if(preventive && ['batch','brand','manufacturer','serialNumber','intervalDays','doseNo','doseOf'].some(k=>f[k]!==storedForm[k])) f.scheduleApproved=false;
   const careConfirmed=preventive ? f.giveVaccine : formType==='grooming' && performedServices.includes('srv_groom');
   const clinicalForm=visitClinicalFields(f,appt,performedServices);
   consultationId.current = draftState.draft.consultationId;
@@ -143,7 +151,7 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
   const [catalogAttempt, retryCatalog] = useState(0);
   useEffect(() => {
     let active = true;
-    api.get('/api/services/prices').then(r => { if (active) { setServiceCatalog(r.catalog.filter(p => p.id.startsWith('srv_') && !p.requiresPrescription)); setDewormingProducts(dewormingProductChoices(r)); setCatalogError(''); } }).catch(e => { if (active) setCatalogError(e.message); });
+    api.get('/api/services/prices').then(r => { if (active) { setServiceCatalog(r.catalog.filter(p => p.id.startsWith('srv_') && !p.requiresPrescription)); setDewormingProducts(dewormingProductChoices(r)); setVaccinationProducts(vaccinationProductChoices(r)); setCatalogError(''); } }).catch(e => { if (active) setCatalogError(e.message); });
     return () => { active = false; };
   }, [catalogAttempt]);
   const relevantServices=serviceCatalog.filter(p=>serviceMatchesVisit(p,formType));
@@ -156,8 +164,8 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
     validation.changed(k);
     if(k==='giveVaccine' && !v) for(const field of ['vaccine','doseNo','doseOf','intervalDays','scheduleApproved','brand','batch']) validation.changed(field);
     if(k==='scheduleFollowUp' && !v) for(const field of ['careStatus','followUpDate','followUpReason']) validation.changed(field);
-    setF({...f,[k]:v,...(["date","vaccine","intervalDays","brand","batch","doseNo","doseOf","dewormingWeaned","dewormingMonthlyRisk","dewormingManual"].includes(k) ? {scheduleApproved:false} : {})});
-    if(['date','vaccine','intervalDays','brand','batch','doseNo','doseOf','dewormingWeaned','dewormingMonthlyRisk','dewormingManual'].includes(k) && f.giveVaccine) validation.changed('scheduleApproved');
+    setF({...f,[k]:v,...(k==='vaccine'?{vaccinationProductId:'',brand:'',batch:'',manufacturer:'',serialNumber:'',intervalDays:'',doseNo:'1',doseOf:'1'}:{}),...(["date","vaccine","intervalDays","brand","batch","doseNo","doseOf","dewormingWeaned","dewormingMonthlyRisk","dewormingManual","vaccinationManual","vaccinationSeriesManual","manufacturer","serialNumber"].includes(k) ? {scheduleApproved:false} : {})});
+    if(['date','vaccine','intervalDays','brand','batch','doseNo','doseOf','dewormingWeaned','dewormingMonthlyRisk','dewormingManual','vaccinationManual','vaccinationSeriesManual','manufacturer','serialNumber'].includes(k) && f.giveVaccine) validation.changed('scheduleApproved');
     if(k==='scheduleFollowUp' && v && f.followUpDays) {validation.changed('followUpDate');setF(previous=>({...previous,followUpDate:calculatedFollowUp(previous.date,previous.followUpDays)}));}
     if(k==='date' && f.scheduleFollowUp && f.followUpDays) {validation.changed('followUpDate');validation.changed('symptomStart');setF(previous=>({...previous,followUpDate:calculatedFollowUp(v,previous.followUpDays)}));}
     if(k==='microchipDate') validation.changed('microchipNumber');
@@ -225,7 +233,7 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
         vaccine: f.vaccine,
         brand: f.brand.trim(),
         batch: f.batch.trim(),
-        ...(formType==='deworming' && selectedProduct ? {dewormingProductId:selectedProduct.id} : {}),
+        ...(selectedProduct ? {[productKey]:selectedProduct.id} : {}),
         manufacturer:(f.manufacturer || "").trim(),serialNumber:(f.serialNumber || "").trim(),
         date: f.date,
         nextDue: boosterDue,
@@ -233,7 +241,7 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
         doseOf: Number(f.doseOf),
         intervalDays: Number(f.intervalDays),
         scheduleApproved: f.scheduleApproved,
-        notes: [f.vaccineNotes.trim(),automaticSchedule ? `Suggested schedule: ${suggestion.reason}. Reference: ${DEWORMING_REFERENCE}` : ''].filter(Boolean).join('\n'),
+        notes: [f.vaccineNotes.trim(),automaticSchedule ? `Suggested schedule: ${suggestedSchedule.reason}. Reference: ${formType==='deworming'?DEWORMING_REFERENCE:VACCINATION_REFERENCE}` : ''].filter(Boolean).join('\n'),
         done: true
       };
     }
@@ -626,17 +634,47 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
                       {errs.vaccine && <span id="soap-vaccine-error" className="err" aria-live="polite">{errs.vaccine}</span>}
                     </div>
 
+                    <div className="fld">
+                      <label htmlFor="soap-brand">{formType==='deworming' ? 'Product brand' : 'Vaccine Brand'}<i> *</i></label>
+                      <select id="soap-brand" name="brand" style={{appearance:'auto'}} value={selectedProduct ? selectedProduct.id : f[productKey]==='other' || f.brand ? 'other' : ''} aria-invalid={!!errs.brand} aria-describedby="soap-brand-error" onChange={e=>{
+                        const productId=e.target.value,product=productChoices.find(p=>p.id===productId);
+                        for(const key of ['brand','batch','manufacturer','serialNumber','intervalDays','doseNo','doseOf','scheduleApproved'])validation.changed(key);
+                        const lot=availableDewormingLots(product,f.date)[0];
+                        setF(previous=>({...previous,[productKey]:product?.id || productId,...(formType==='vaccination'?{...(!previous.vaccinationManual?{intervalDays:''}:{}),...(!previous.vaccinationSeriesManual?{doseNo:'1',doseOf:'1'}:{})}:{}),brand:product?.name || '',batch:lot?.batch || '',manufacturer:product?.manufacturer || '',serialNumber:lot?.serialNumber || '',scheduleApproved:false}));
+                      }}>
+                        <option value="">Select product</option><option value="other">Other product</option>
+                        {productChoices.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
+                      </select>
+                      {!selectedProduct && (f[productKey]==='other' || f.brand) && <input aria-label="Other product name" name="otherBrand" value={f.brand} maxLength={60} onChange={e=>set('brand',e.target.value)} aria-invalid={!!errs.brand} aria-describedby="soap-brand-error"/>}
+
+                      {errs.brand && <span id="soap-brand-error" className="err" aria-live="polite">{errs.brand}</span>}
+                    </div>
+
+                    {(formType!=='deworming' || availableLots.length>0) && <div className="fld">
+                      <label htmlFor="soap-batch">Batch / Lot Number{formType==='deworming' && !availableLots.length ? ' (optional)' : ''}{formType==='vaccination'&&<i> *</i>}</label>
+                      {availableLots.length ? <select id="soap-batch" name="batch" value={f.batch} onChange={e=>{const batch=e.target.value;setF(previous=>({...previous,batch,serialNumber:availableLots.find(l=>l.batch===batch)?.serialNumber || '',scheduleApproved:false}));validation.changed('batch');validation.changed('scheduleApproved');}} aria-invalid={!!errs.batch} aria-describedby="soap-batch-error">
+                        {availableLots.map(l=><option key={l.batch} value={l.batch}>{l.batch} · expires {l.expiresOn}</option>)}
+                      </select> : <input type="text" id="soap-batch" name="batch" maxLength={60} value={f.batch} onChange={e=>set('batch',e.target.value)} aria-invalid={!!errs.batch} aria-describedby="soap-batch-error"/>}
+
+                      {formType==='deworming' && <small>Administration reference: {vaccinationId.current}</small>}
+                      {errs.batch && <span id="soap-batch-error" className="err" aria-live="polite">{errs.batch}</span>}
+                    </div>}
                     {formType==='deworming' && <div style={{gridColumn:'1/-1'}}>
                       <p>{automaticSchedule ? suggestion.reason : 'Vet-selected schedule'} · <a href={DEWORMING_REFERENCE} target="_blank" rel="noreferrer">Guideline</a></p>
                       {suggestion?.juvenile && <label><input type="checkbox" name="dewormingWeaned" checked={!!f.dewormingWeaned} onChange={e=>set('dewormingWeaned',e.target.checked)}/> Weaned more than two weeks ago</label>}
                       {suggestion && !suggestion.juvenile && <label><input type="checkbox" name="dewormingMonthlyRisk" checked={!!f.dewormingMonthlyRisk} onChange={e=>set('dewormingMonthlyRisk',e.target.checked)}/> Increased risk — use monthly prevention</label>}
                       <label><input type="checkbox" name="dewormingManual" checked={!!f.dewormingManual} onChange={e=>set('dewormingManual',e.target.checked)}/> Customize interval</label>
                     </div>}
+                    {formType==='vaccination' && <div style={{gridColumn:'1/-1'}}>
+                      <p>{automaticSchedule ? vaccineSuggestion.reason : selectedProduct ? 'Review the patient’s age and product protocol, or customize the interval.' : 'Select the vaccine product to calculate its schedule.'} · <a href={VACCINATION_REFERENCE} target="_blank" rel="noreferrer">Vaccination guideline</a></p>
+                      {selectedProduct && pet.birth && (Date.parse(f.date)-Date.parse(pet.birth))/86400000<selectedProduct.minAgeDays && <p role="alert" className="err">This patient is below this product protocol’s starting age ({selectedProduct.minAgeDays} days). Review suitability before recording administration.</p>}
+                      <label><input type="checkbox" name="vaccinationManual" checked={!!f.vaccinationManual} onChange={e=>set('vaccinationManual',e.target.checked)}/> Customize interval</label>
+                    </div>}
                     <div className="fld">
-                      <label htmlFor="booster-interval">{formType==='deworming' ? 'Repeat after (days)' : 'Vet-selected interval (days)'}<i> *</i></label>
+                      <label htmlFor="booster-interval">Repeat after (days)<i> *</i></label>
                       <input id="booster-interval" readOnly={!!automaticSchedule} aria-invalid={!!errs.intervalDays} aria-describedby="soap-interval-error" type="number" min="1" max="3650" step="1" name="intervalDays" value={f.intervalDays} onChange={e => set("intervalDays", e.target.value)} />
                       {errs.intervalDays && <span id="soap-interval-error" className="err" aria-live="polite">{errs.intervalDays}</span>}
-                      <label htmlFor="booster-due">{formType==='deworming' ? 'Next treatment due date' : 'Calculated Booster Due Date'}</label>
+                      <label htmlFor="booster-due">Next treatment due date</label>
                       <input
                         type="date"
                         id="booster-due"
@@ -647,9 +685,10 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
                     </div>
 
                     {formType==='deworming' && <p style={{gridColumn:'1/-1'}}>One administration for {pet.name} is recorded for this visit. This is not a tablet quantity or medicine dosage. The next due date is calculated from the care date plus your selected interval.</p>}
-                    <details style={{gridColumn:'1/-1'}} open={formType==='deworming' && !errs.doseNo && !errs.doseOf ? undefined : true}><summary>{formType==='deworming' ? `Treatment series (optional) · ${f.doseNo} of ${f.doseOf}` : 'Vaccination series'}</summary>
-                    <label>Dose number in current series<input type="number" min="1" max="20" step="1" aria-invalid={!!errs.doseNo} aria-describedby="soap-doseNo-error" name="doseNo" value={f.doseNo} onChange={e => set("doseNo", e.target.value)} />{errs.doseNo && <span id="soap-doseNo-error" className="err" aria-live="polite">{errs.doseNo}</span>}</label>
-                    <label>Total planned doses in series<input type="number" min="1" max="20" step="1" aria-invalid={!!errs.doseOf} aria-describedby="soap-doseOf-error" name="doseOf" value={f.doseOf} onChange={e => set("doseOf", e.target.value)} />{errs.doseOf && <span id="soap-doseOf-error" className="err" aria-live="polite">{errs.doseOf}</span>}</label>
+                    <details style={{gridColumn:'1/-1'}} open={errs.doseNo || errs.doseOf ? true : undefined}><summary>{formType==='deworming' ? `Treatment series (optional) · ${f.doseNo} of ${f.doseOf}` : `Vaccination series · ${f.doseNo} of ${f.doseOf}`}</summary>
+                    {formType==='vaccination' && <label><input type="checkbox" name="vaccinationSeriesManual" checked={!!f.vaccinationSeriesManual} onChange={e=>set('vaccinationSeriesManual',e.target.checked)}/> Customize series</label>}
+                    <label>Dose number in current series<input type="number" min="1" max="20" step="1" aria-invalid={!!errs.doseNo} aria-describedby="soap-doseNo-error" name="doseNo" readOnly={formType==='vaccination' && !!vaccineSuggestion && !f.vaccinationSeriesManual} value={f.doseNo} onChange={e => set("doseNo", e.target.value)} />{errs.doseNo && <span id="soap-doseNo-error" className="err" aria-live="polite">{errs.doseNo}</span>}</label>
+                    <label>Total planned doses in series<input type="number" min="1" max="20" step="1" aria-invalid={!!errs.doseOf} aria-describedby="soap-doseOf-error" name="doseOf" readOnly={formType==='vaccination' && !!vaccineSuggestion && !f.vaccinationSeriesManual} value={f.doseOf} onChange={e => set("doseOf", e.target.value)} />{errs.doseOf && <span id="soap-doseOf-error" className="err" aria-live="polite">{errs.doseOf}</span>}</label>
                     </details>
                     <div style={{gridColumn:"1/-1"}}>
                       <p>Care date: {f.date} · Birth date: {pet.birth || 'Not recorded'}</p>
@@ -657,33 +696,7 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
                       {!VACCINE_SERVICE[f.vaccine] && <p>No fixed catalog price is configured for this vaccine. Its administration is recorded without an automatic vaccine charge.</p>}
                       {errs.scheduleApproved && <p id="soap-scheduleApproved-error" className="err" aria-live="polite">{errs.scheduleApproved}</p>}
                     </div>
-                    <div className="fld">
-                      <label htmlFor="soap-brand">{formType==='deworming' ? 'Product brand' : 'Vaccine Brand'}</label>
-                      {formType==='deworming' ? <>
-                        <select id="soap-brand" name="brand" style={{appearance:'auto'}} value={selectedProduct ? selectedProduct.id : f.dewormingProductId==='other' || f.brand ? 'other' : ''} aria-invalid={!!errs.brand} aria-describedby="soap-brand-error" onChange={e=>{
-                          const productId=e.target.value;const product=dewormingProducts.find(p=>p.id===productId);
-                          validation.changed('brand');validation.changed('batch');validation.changed('scheduleApproved');
-                          setF(previous=>({...previous,dewormingProductId:product?.id || productId,brand:product?.name || '',batch:availableDewormingLots(product,f.date)[0]?.batch || '',scheduleApproved:false}));
-                        }}>
-                          <option value="">Select product</option><option value="other">Other product</option>
-                          {dewormingProducts.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
-                        </select>
-                        {!selectedProduct && (f.dewormingProductId==='other' || f.brand) && <input aria-label="Other product name" name="otherBrand" value={f.brand} maxLength={60} onChange={e=>set('brand',e.target.value)} aria-invalid={!!errs.brand} aria-describedby="soap-brand-error"/>}
-                      </> : <input type="text" placeholder="e.g. Defensor 3, Vanguard" id="soap-brand" aria-invalid={!!errs.brand} aria-describedby="soap-brand-error" name="brand" value={f.brand} onChange={e=>set('brand',e.target.value)}/>}
-
-                      {errs.brand && <span id="soap-brand-error" className="err" aria-live="polite">{errs.brand}</span>}
-                    </div>
-
-                    {(formType!=='deworming' || availableLots.length>0) && <div className="fld">
-                      <label htmlFor="soap-batch">Batch / Lot Number{formType==='deworming' && !availableLots.length ? ' (optional)' : ''}</label>
-                      {formType==='deworming' && availableLots.length ? <select id="soap-batch" name="batch" value={f.batch} onChange={e=>set('batch',e.target.value)} aria-invalid={!!errs.batch} aria-describedby="soap-batch-error">
-                        {availableLots.map(l=><option key={l.batch} value={l.batch}>{l.batch} · expires {l.expiresOn}</option>)}
-                      </select> : <input type="text" id="soap-batch" name="batch" maxLength={60} value={f.batch} onChange={e=>set('batch',e.target.value)} aria-invalid={!!errs.batch} aria-describedby="soap-batch-error"/>}
-
-                      {formType==='deworming' && <small>Administration reference: {vaccinationId.current}</small>}
-                      {errs.batch && <span id="soap-batch-error" className="err" aria-live="polite">{errs.batch}</span>}
-                    </div>}
-                    {formType==='vaccination' && [['manufacturer','Manufacturer (optional)'],['serialNumber','Serial number (optional)']].map(([key,label])=><div className="fld" key={key}><label htmlFor={`soap-${key}`}>{label}</label><input id={`soap-${key}`} name={key} value={f[key] || ''} onChange={e=>set(key,e.target.value)} maxLength={100} aria-invalid={!!errs[key]} aria-describedby={`soap-${key}-error`}/>{errs[key] && <span id={`soap-${key}-error`} className="err" aria-live="polite">{errs[key]}</span>}</div>)}
+                    {formType==='vaccination' && <details style={{gridColumn:'1/-1'}} open={errs.manufacturer || errs.serialNumber ? true : undefined}><summary>Manufacturer / serial details (optional)</summary><div className="two">{[['manufacturer','Manufacturer (optional)'],['serialNumber','Serial number (optional)']].map(([key,label])=><div className="fld" key={key}><label htmlFor={`soap-${key}`}>{label}</label><input id={`soap-${key}`} name={key} readOnly={key==='manufacturer'?!!selectedProduct?.manufacturer:!!availableLots.find(l=>l.batch===f.batch)?.serialNumber} value={f[key] || ''} onChange={e=>set(key,e.target.value)} maxLength={100} aria-invalid={!!errs[key]} aria-describedby={`soap-${key}-error`}/>{errs[key] && <span id={`soap-${key}-error`} className="err" aria-live="polite">{errs[key]}</span>}</div>)}</div></details>}
                   </div>
                 )}
                 <details style={{marginTop:12}}><summary>Microchip identification (if applicable)</summary><div className="two">

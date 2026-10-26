@@ -157,3 +157,22 @@ test('next care respects same-day chronology when a later administration clears 
  assert.deepEqual(cardCareDue(result.data.history.events),[]);
  const {text}=await pdfText(f.pet);assert.ok(text.includes('No next deworming or vaccination date recorded.'));
 });
+
+test('vaccination catalog metadata autofills actual lot at finalization and rejects mismatched patient products',async()=>{
+ const {DEFAULT_VACCINATION_PRODUCTS}=await import('../../src/vaccinationProducts.js');
+ const previous=process.env.CLINIC_VACCINATION_PRODUCTS_JSON;
+ const products=[{...DEFAULT_VACCINATION_PRODUCTS[0],manufacturer:'Synthetic manufacturer',lots:[{batch:'SYNTHETIC-ACTUAL-LOT',expiresOn:'2099-01-01',serialNumber:'SYNTHETIC-ACTUAL-SERIAL'}]},DEFAULT_VACCINATION_PRODUCTS[2]];
+ process.env.CLINIC_VACCINATION_PRODUCTS_JSON=JSON.stringify(products);
+ try{
+  const f=await fixture({vaccinate:false});
+  const visit='vaccine-stock-'+crypto.randomUUID();
+  await query("INSERT INTO appointments(id,pet_id,vet_id,date,time,reason,status) VALUES($1,$2,'vet',$3,'11:00','Vaccination: Anti-rabies','In consultation')",[visit,f.pet,clinicClock().date]);
+  const vaccination={id:'dose-'+crypto.randomUUID(),vaccine:'Anti-rabies',vaccinationProductId:products[0].id,brand:'',batch:'',doseNo:1,doseOf:1,intervalDays:365,nextDue:(await import('../../src/clinicalWorkflow.js')).boosterDate(clinicClock().date,365),scheduleApproved:true};
+  const request={...f.request,id:'note-'+crypto.randomUUID(),apptId:visit,vaccination};
+  assert.equal((await call('vet','POST','/consultations',{...request,vaccination:{...vaccination,vaccinationProductId:products[1].id,vaccine:'Feline 4-in-1',batch:'SYNTHETIC-MANUAL'}})).status,400);
+  assert.equal((await query('SELECT status FROM appointments WHERE id=$1',[visit])).rows[0].status,'In consultation');
+  const saved=await call('vet','POST','/consultations',request);assert.equal(saved.status,200,JSON.stringify(saved));
+  const row=(await query('SELECT * FROM vaccinations WHERE id=$1',[vaccination.id])).rows[0];assert.equal(row.brand,products[0].name);assert.equal(row.batch,'SYNTHETIC-ACTUAL-LOT');assert.equal(row.manufacturer,'Synthetic manufacturer');assert.equal(row.serial_number,'SYNTHETIC-ACTUAL-SERIAL');
+  const event=(await card(f.pet)).data.history.events.find(e=>e.id===vaccination.id);assert.equal(event.batch,row.batch);assert.equal(event.nextDue,vaccination.nextDue);
+ }finally{if(previous===undefined)delete process.env.CLINIC_VACCINATION_PRODUCTS_JSON;else process.env.CLINIC_VACCINATION_PRODUCTS_JSON=previous;}
+});

@@ -345,7 +345,7 @@ Apply the updated `server/database/care-workflow.sql` after `schema.sql` on exis
 
 Veterinarians confirm performed services in SOAP. Confirmed services and mapped administered vaccines are added once to the same transaction as the prescription, finalized visit and checkout task. Reception retains each confirmed service at quantity one; the server rejects removal or duplication at payment. Product dispensing quantities retain the existing prescription controls. Unsupported vaccine types remain recordable with a visible notice that no configured vaccine price was added; no price is invented.
 
-The former SOAP booster helper used today's date and assumed an annual interval for unknown vaccines. SOAP now requires the actual dose number/series length, an explicit interval, and veterinarian approval after reviewing the patient's birth date, species, prior doses and product. It calculates the due date from the administration date. Changing the date, product identity, dose or interval clears the approval. The server validates the calculation and saves the dose numbers, vet and approved interval. This intentionally requires updated clients to supply approval and dose information. Suggested registration protocols still do not generate reminders until administration is certified by a vet.
+The former SOAP booster helper used today's date and assumed an annual interval for unknown vaccines. SOAP now requires the actual dose number/series length, an interval, and veterinarian approval after reviewing the patient's birth date, species, prior doses and product. Vaccination product protocols now supply patient-specific interval/series suggestions for review, with custom values available; existing draft choices are preserved. It calculates the due date from the administration date. Changing the date, product identity, dose or interval clears the approval. The server validates the calculation and saves the dose numbers, vet and approved interval. This intentionally requires updated clients to supply approval and dose information. Suggested registration protocols still do not generate reminders until administration is certified by a vet.
 
 Each consultation care plan remains visible even after later routine consultations. Owners and reception explicitly select its request when booking; pet/ownership checks and a database constraint prevent cross-pet links and duplicate bookings. Rescheduling retains the link; cancellation/no-show returns the request to Needs booking. Only completion of its linked visit marks it Completed. The linked instructions appear in the veterinarian's SOAP form.
 
@@ -1402,7 +1402,7 @@ current online, walk-in, admission and payment handoffs.
 
 ### Deworming visit shortcuts
 
-The veterinarian explicitly confirms suitability and actual administration. For confirmed deworming, the record generates the suitability statement, treatment date, product (when entered), and next due date; additional findings and after-care instructions are optional. Deferred visits still require assessment and next steps. New visits default to one administration (1 of 1), with optional series editing; these counts are not tablet quantities or a calculated medicine dose. The next due date is the care date plus the veterinarian-approved interval. Brand and lot remain actual-package entries because the service catalog contains no stock-lot inventory.
+The veterinarian explicitly confirms suitability and actual administration. For confirmed deworming, the record generates the suitability statement, treatment date, product (when entered), and next due date; additional findings and after-care instructions are optional. Deferred visits still require assessment and next steps. New visits default to one administration (1 of 1), with optional series editing; these counts are not tablet quantities or a calculated medicine dose. The next due date is the care date plus the veterinarian-approved interval. Brand and lot retain actual product identity; product dropdowns and configured stock metadata automate copying those details when available.
 
 ### Forms matched to visit reasons
 
@@ -1550,3 +1550,73 @@ tests/vet-card.test.js`, `npm run test:ui`, `npm run test:clinic`,
 `npm run test:system:postgres` and the digital-vet-card PostgreSQL suite with a
 disposable local TEST_DATABASE_URL, `npm run build`, and the synthetic browser
 fixture `/tests/browser/owner-care.html` (`window.ownerCareResult`).
+
+### Overdue arrivals and vaccination form automation
+
+The front desk automatically flags Scheduled visits whose Manila date/time has
+passed as **Awaiting arrival**. It refreshes the flag every 15 seconds and on
+window focus. Older unresolved Scheduled visits remain in the scoped summary
+across midnight. Reception can check in same-day late arrivals, open that exact
+visit for rescheduling, or review and confirm **Mark no-show**. A clock flag does
+not save an absence: the existing status API rechecks the locked visit, time,
+role and reviewed snapshot. Confirmed no-shows release their slot and linked
+follow-up for rebooking through the existing workflow.
+
+Vaccination now uses matching product dropdowns like deworming. The product
+comes before its schedule; changing vaccine clears incompatible product details.
+The clinic endpoint supplies `vaccinationProducts`; old responses fall back to
+brands already named in the clinic protocols. Brand choice is still confirmation
+of the actual administered product, not proof of stock availability. Existing
+saved draft intervals and series remain custom rather than being overwritten.
+
+Selected products suggest interval, next due date and series counts using the
+actual care date, birth date, species and prior certified same-family doses.
+Core juvenile suggestions repeat every four weeks through at least 16 weeks,
+then suggest revaccination at 26 weeks; these follow the broad
+[WSAVA 2024 guidance, pp. 3, 11–21](https://wsava.org/wp-content/uploads/2024/04/WSAVA-Vaccination-guidelines-2024.pdf).
+Initial product series use the configured number/interval; maintenance uses the
+configured clinic product protocol. The existing annual clinic default is not
+a universal vaccine rule. For example, the
+[manufacturer rabies leaflet](https://www.zoetisus.com/content/_assets/docs/vmips/package-inserts/defensor_3.pdf)
+describes a repeat at one year and subsequent product-dependent revaccination;
+local requirements and the locally supplied label must be reviewed by the vet.
+The
+[feline combination leaflet](https://www.zoetisus.com/content/_assets/docs/vmips/package-inserts/felocell_4.pdf)
+also illustrates why primary series and starting ages depend on the product.
+A patient below the configured starting age gets an inline warning and no
+automatic routine schedule. Missing/unsupported patient or product details
+require a custom interval. The veterinarian approves or customizes every
+schedule; edits invalidate approval. Counts describe administrations, not mL or
+tablets. Only finalizing actual administration creates a recall and charge.
+
+Optional deployment variable `CLINIC_VACCINATION_PRODUCTS_JSON` replaces the
+fallback list. Each product has:
+
+```json
+{
+  "id": "clinic-product-id",
+  "name": "Actual product name",
+  "vaccines": ["Anti-rabies"],
+  "species": ["Canine", "Feline"],
+  "manufacturer": "",
+  "minAgeDays": 84,
+  "primaryDoses": 1,
+  "primaryIntervalDays": 28,
+  "boosterDays": 365,
+  "lots": []
+}
+```
+
+Populate actual lots with `batch`, `expiresOn` (`YYYY-MM-DD`) and optional
+`serialNumber`. The form and server choose the earliest unexpired lot, preserve
+another selected valid lot, fill configured manufacturer/serial details and
+reject incompatible products/expired lots. No stock or identifiers are invented.
+This metadata does not track stock depletion. Vaccination retains required
+actual lot entry when no configured lot is available; deworming's unavailable
+optional lot remains hidden. Optional manufacturer/serial controls are collapsed
+and still editable when no metadata is configured.
+
+Checks: `node --test tests/arrival-timing.test.js tests/vaccination-automation.test.js tests/soap-draft.test.js tests/soap-validation.test.js tests/visit-care.test.js tests/deworming-schedule.test.js tests/assistant-workflow.test.js tests/appointment-status.test.js`,
+`npm run test:ui`, `npm run test:clinic`, `npm run test:system:postgres`, and the
+local PostgreSQL digital-card/P2 validation tests. Browser regressions:
+`/tests/browser/vaccination-arrivals.html` and `/tests/browser/visit-forms.html`.

@@ -25,7 +25,7 @@ buildSync({
       export { PetFormModal, PetProfileModal } from './src/roles/owner/Pets.jsx';
       export { DischargeDocument } from './src/roles/AdmissionDischargeSummary.jsx';
       export {default as PetRequestsPage} from './src/roles/PetRequestsPage.jsx';
-      export {RequestReview} from './src/roles/FrontDeskApprovals.jsx';
+      export {RequestReview,default as FrontDeskApprovals} from './src/roles/FrontDeskApprovals.jsx';
       export { default as InClinicRegistration } from './src/roles/InClinicRegistration.jsx';
       export { default as ExistingPatientCheckInModal } from './src/roles/ExistingPatientCheckInModal.jsx';
       export { default as AdmissionForm} from './src/roles/AdmissionForm.jsx';
@@ -410,4 +410,12 @@ test('My Pets shows correctly labelled deworming and only the owner’s saved tr
  const html=render(ui.owner.Dash,props('owner',db));
  for(const text of ['Next preventive care','Booked visit','Recent transactions','Recent deworming','250.00','View payment'])assert.ok(html.includes(text),text);
  assert.ok(!html.includes('Next vaccine'));assert.ok(!html.includes('PRIVATE-FOREIGN-TRANSACTION'));
+});
+
+
+test('front desk keeps older unresolved arrivals visible with reviewed no-show and reschedule actions',()=>{
+ const db=populated();db.appts=[{id:'old',petId:db.pets[0].id,vetId:'v1',date:'2000-01-01',time:'10:30 AM',status:'Scheduled',reason:'Past unarrived visit'},{id:'future',petId:db.pets[0].id,date:'2099-01-01',time:'10:00',status:'Scheduled',reason:'Future booked visit'},{id:'arrived',petId:db.pets[0].id,date:'2000-01-01',time:'09:00',status:'Checked-in',reason:'Already arrived'}];
+ const html=render(ui.FrontDeskApprovals,{db,confirming:{},onNoShow(){}});
+ for(const text of ['Awaiting arrival','Mark no-show','Reschedule','Past unarrived visit','Future booked visit','10:30 AM'])assert.ok(html.includes(text),text);
+ assert.ok(!html.includes('Already arrived'));assert.ok(!html.includes('NaN'));assert.ok(!html.includes('Confirm no-show'));
 });

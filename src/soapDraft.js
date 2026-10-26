@@ -5,7 +5,8 @@ export function readSoapDraft(storage, key, initialForm) {
   const raw = storage.getItem(key);
   if (!raw) return null;
   const draft = JSON.parse(raw);
-  if(draft.form)for(const key of ['manufacturer','serialNumber','microchipNumber','microchipDate','visitAnswers'])if(draft.form[key]===undefined && initialForm[key]!==undefined)draft.form[key]=initialForm[key];
+  if(draft.form && draft.form.dewormingManual===undefined && initialForm.dewormingManual!==undefined) draft.form.dewormingManual=!!draft.form.intervalDays;
+  if(draft.form)for(const key of ['manufacturer','serialNumber','microchipNumber','microchipDate','visitAnswers','dewormingManual','dewormingWeaned','dewormingMonthlyRisk','dewormingProductId'])if(draft.form[key]===undefined && initialForm[key]!==undefined)draft.form[key]=initialForm[key];
   if (draft.form?.visitAnswers != null && (typeof draft.form.visitAnswers !== 'object' || Array.isArray(draft.form.visitAnswers) || Object.values(draft.form.visitAnswers).some(value=>typeof value!=='string'))) throw new Error('Invalid visit answers.');
   if (draft.version !== 1 || !Number.isFinite(draft.savedAt)
       || !draft.expectedVisit || !draft.consultationId || !draft.vaccinationId

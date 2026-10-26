@@ -1428,3 +1428,33 @@ Browser regression checks: run `npm run dev:frontend -- --host 0.0.0.0` and open
 `/tests/browser/visit-forms.html`. The synthetic fixture checks live validation,
 draft recovery, confirmed-care notes, calculated dates and invalidated approval.
 It replaces API reads locally and performs no clinical writes.
+
+### Automatic deworming suggestions and product lots
+
+Confirmed care keeps additional assessment/after-care text boxes collapsed;
+deferrals expose them. Deworming product choices come from the clinic endpoint,
+with Canex/Drontal defaults matching the existing service catalog. Other actual
+products can still be entered. Lot autofill uses only configured unexpired lots,
+choosing the earliest expiry first and allowing the vet to select another lot.
+No lot is fabricated; absent stock data retains a batch field.
+
+Set deployment variable `CLINIC_DEWORMING_PRODUCTS_JSON` to an array of
+`{ "id": "product-id", "name": "Actual product name", "lots": [] }` objects.
+Each actual stocked lot has `batch` (up to 60 characters) and `expiresOn`
+(`YYYY-MM-DD`). Keep this stock list current; it is not a stock-depletion system.
+The authenticated `/api/services/prices` response exposes it as
+`dewormingProducts`. Do not populate it with example or generated lot numbers.
+
+Scheduling suggestions follow [ESCCAP GL1, June 2025, pp. 9–13](https://www.esccap.org/link-document/27/):
+14 days for the early-life stage; one calendar month for weaned juveniles with
+ongoing risk or increased-risk adults; three calendar months for adults whose
+risk is not established. The vet confirms weaning more than two weeks ago;
+birth date alone cannot establish weaning. A young pet with unknown weaning
+stage receives the early-life suggestion for review. Monthly juvenile prevention
+requires review of infection risk. Missing/invalid birth dates, unsupported
+species and ages below the guideline's starting ages require a custom schedule.
+The displayed day count is calculated from the selected care date (today in
+Manila by default), with month-end clamping. Historical care uses its actual
+care date. These are European guideline-based suggestions, not a universal
+Philippine protocol or a product dose instruction; the vet approves or customizes
+for the patient/product. Existing draft intervals are preserved as custom.

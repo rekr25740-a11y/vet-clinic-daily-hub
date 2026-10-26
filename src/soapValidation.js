@@ -20,6 +20,7 @@ export function validateSoapFields(form, today, birth, visitDate) {
   for(const [key,value] of Object.entries(form.visitAnswers || {})) if(typeof value!=='string' || value.length>500) errors[`visitAnswer-${key}`]='Use no more than 500 characters.';
   if (String(form.prescription || '').length > 3000) errors.prescription = 'Prescription notes cannot exceed 3,000 characters.';
   if (form.giveVaccine) {
+    for(const [field,label] of [['brand','Product brand'],['batch','Batch / lot']]) if(String(form[field] || '').length>60) errors[field]=`${label} cannot exceed 60 characters.`;
     if (!form.vaccine) errors.vaccine='Please select the administered biological / vaccine.';
     if (!Number.isInteger(Number(form.doseNo)) || Number(form.doseNo)<1 || Number(form.doseNo)>20) errors.doseNo='Enter the administered dose number (1–20).';
     if (!Number.isInteger(Number(form.doseOf)) || Number(form.doseOf)<1 || Number(form.doseOf)>20 || Number(form.doseOf)<Number(form.doseNo)) errors.doseOf='Total planned doses must be 1–20 and at least the administered dose number.';

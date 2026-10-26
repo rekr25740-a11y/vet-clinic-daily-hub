@@ -14,8 +14,8 @@ const field=name=>document.querySelector(`[name="${name}"]`);
 const keys=new Set();
 async function edit(name,value){
  const control=field(name);assert(control,`Missing ${name}`);
- const proto=control instanceof HTMLTextAreaElement?HTMLTextAreaElement.prototype:HTMLInputElement.prototype;
- flushSync(()=>{Object.getOwnPropertyDescriptor(proto,'value').set.call(control,value);control.dispatchEvent(new Event('input',{bubbles:true}));});
+ const proto=control instanceof HTMLSelectElement?HTMLSelectElement.prototype:control instanceof HTMLTextAreaElement?HTMLTextAreaElement.prototype:HTMLInputElement.prototype;
+ flushSync(()=>{Object.getOwnPropertyDescriptor(proto,'value').set.call(control,value);control.dispatchEvent(new Event(control instanceof HTMLSelectElement?'change':'input',{bubbles:true}));});
  await frame();
 }
 async function toggle(name){flushSync(()=>field(name).click());await frame();}
@@ -29,7 +29,7 @@ async function mount(service,reason,{clear=true}={}){
 }
 async function run(){
  const originalGet=api.get,originalPost=api.post;
- api.get=async path=>path==='/api/services/prices'?{catalog:[{id:'srv_groom',name:'Grooming',price:100},{id:'srv_deworm',name:'Deworming',price:250},{id:'srv_rabies',name:'Anti-rabies',price:250}]}:path==='/api/clinical/note-options'?{options:{diagnosis:[],treatment:[]}}:{visits:[]};
+ api.get=async path=>path==='/api/services/prices'?{dewormingProducts:[{id:'fixture-product',name:'Synthetic dewormer',lots:[{batch:'SYNTHETIC-EXPIRED',expiresOn:'2000-01-01'},{batch:'SYNTHETIC-LOT',expiresOn:'2099-12-31'}]}],catalog:[{id:'srv_groom',name:'Grooming',price:100},{id:'srv_deworm',name:'Deworming',price:250},{id:'srv_rabies',name:'Anti-rabies',price:250}]}:path==='/api/clinical/note-options'?{options:{diagnosis:[],treatment:[]}}:{visits:[]};
  api.post=async()=>{throw Error('Fixture must never write clinical data');};
  try{
   await mount('checkup','Skin or ear problem');
@@ -61,7 +61,17 @@ async function run(){
   assert(field('diagnosis').getAttribute('aria-invalid')==='false','Confirmed grooming supplies suitability');
   assert(field('treatment').getAttribute('aria-invalid')==='false','Confirmed grooming supplies care details');
   await toggle('groomingPerformed');assert(field('treatment').getAttribute('aria-invalid')==='true','Deferred grooming needs next steps');
-  return {passed:true,checks:['live history limits','draft recovery','live weight and assessment','vaccination documentation','due-date calculation','approval invalidation','series validation','grooming confirmation and deferral']};
+  await mount('deworming','Routine deworming');await toggle('giveVaccine');
+  assert(!field('diagnosis').closest('details').open,'Confirmed care must hide extra note boxes');
+  assert(field('intervalDays').readOnly && Number(field('intervalDays').value)>0,'Repeat interval must populate automatically');
+  const quarterly=document.getElementById('booster-due').value;
+  await toggle('dewormingMonthlyRisk');assert(document.getElementById('booster-due').value<quarterly,'Risk change must recalculate due date');
+  await edit('brand','fixture-product');assert(field('batch').value==='SYNTHETIC-LOT','Product selection must fill actual configured lot');
+  assert(!field('batch').textContent.includes('EXPIRED'),'Expired lots must not be offered');
+  await toggle('scheduleApproved');assert(field('scheduleApproved').checked,'Calculated schedule still accepts vet approval');
+  await toggle('dewormingManual');await edit('intervalDays','21');assert(!field('scheduleApproved').checked,'Manual change must invalidate approval');
+  await toggle('giveVaccine');assert(field('diagnosis').closest('details').open,'Deferred care must expose notes');
+  return {passed:true,checks:['live history limits','draft recovery','live weight and assessment','vaccination documentation','due-date calculation','approval invalidation','series validation','grooming confirmation and deferral','collapsed confirmed-care notes','automatic deworming schedule','configured product lot autofill','expired lot exclusion']};
  }finally{flushSync(()=>root.unmount());api.get=originalGet;api.post=originalPost;for(const key of keys)localStorage.removeItem(key);}
 }
 window.visitFormResult=run().then(result=>{document.getElementById('results').textContent=JSON.stringify(result,null,2);return result;}).catch(error=>{document.getElementById('results').textContent=error.stack;throw error;});

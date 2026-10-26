@@ -55,3 +55,13 @@ test('focused visit fields migrate older drafts and preserve incomplete entries'
   assert.throws(()=>readSoapDraft(db,'draft',initial));
  }
 });
+
+test('deworming automation preserves a previously entered interval as a custom draft',()=>{
+ const db=storage(),draft=fixture();draft.form.intervalDays='21';writeSoapDraft(db,'draft',draft);
+ const initial={...form,intervalDays:'',dewormingManual:false,dewormingWeaned:false,dewormingMonthlyRisk:false,dewormingProductId:''};
+ const recovered=readSoapDraft(db,'draft',initial);
+ assert.equal(recovered.form.dewormingManual,true);assert.equal(recovered.form.intervalDays,'21');
+ assert.equal(recovered.form.dewormingWeaned,false);
+ draft.form.intervalDays='';writeSoapDraft(db,'draft',draft);
+ assert.equal(readSoapDraft(db,'draft',initial).form.dewormingManual,false);
+});

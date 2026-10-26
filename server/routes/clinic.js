@@ -1,3 +1,4 @@
+import {dewormingProducts} from '../dewormingProducts.js';
 import {ownerAccountLinkRouter} from './ownerAccountLink.js';
 import {resolveWalkInOwner} from '../walkInOwner.js';
 import {vaccinationCardFieldErrors} from '../../src/vaccinationCardFields.js';
@@ -1363,7 +1364,7 @@ clinicRouter.delete("/appointments/:id", async (req, res) => {
 
 
 clinicRouter.get("/services/prices", (req, res) => {
-  res.json({ success: true, catalog: priceCatalog() });
+  res.json({ success: true, catalog: priceCatalog(), dewormingProducts: dewormingProducts() });
 });
 
 clinicRouter.post("/appointments/:id/billing", async (req, res) => {

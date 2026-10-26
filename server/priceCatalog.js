@@ -1,3 +1,4 @@
+import {isCheckoutAddon} from '../src/checkoutProducts.js';
 import { GUIDE_PRODUCTS } from "./productGuide.js";
 export const SERVICE_PRICES = [
   { id: "srv_consult", category: "Consultation & Exam", name: "Routine General Consultation & Exam", price: 500, desc: "Standard physical evaluation of vitals & condition" },
@@ -35,4 +36,20 @@ export function canonicalInvoice(items, catalog = priceCatalog(), admission = []
     result.push({catalogId: official.id || official.catalogId, name: official.name, category: official.category, price: official.price, qty: item.qty,...(item.source === 'admission' ? {source:'admission'} : {})});
   }
   return result;
+}
+
+// Validate against saved clinical decisions, never the source/category supplied by reception.
+export function validateCheckoutAddons(invoice, consultation, saved = [], catalog = priceCatalog()) {
+  const seen = new Set();
+  for (const line of invoice.filter(i => i.source !== 'admission')) {
+    if (seen.has(line.catalogId)) return 'Use one invoice line per product or service.';
+    seen.add(line.catalogId);
+    if (isCheckoutAddon(catalog.find(p => p.id === line.catalogId))) continue;
+    const service = (consultation.performed_services || []).find(p => p.catalogId === line.catalogId);
+    const prescription = (consultation.prescription_items || []).find(p => p.catalogId === line.catalogId);
+    const recorded = saved.find(p => p.source !== 'admission' && p.catalogId === line.catalogId && p.name === line.name && p.price === line.price);
+    if ((service && line.qty === service.qty) || (prescription && line.qty <= prescription.quantity) || (recorded && line.qty <= recorded.qty)) continue;
+    return 'Only shampoo and accessories can be added at checkout. Clinical services and other products must come from the saved visit.';
+  }
+  return null;
 }

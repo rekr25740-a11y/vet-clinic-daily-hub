@@ -1,3 +1,4 @@
+import {readLoginCooldown} from './loginCooldown.js';
 import { useState, useEffect, useRef, lazy, Suspense } from "react";
 import { startClinicSync } from "./clinicSync.js";
 import { createClinicStateLoader } from "./clinicStateLoader.js";
@@ -35,7 +36,7 @@ function getInitialView() {
     if (q.get("unlock")) return "unlock";
     if (q.get("invite")) return "staff-setup";
   } catch (_) {}
-  return "landing";
+  return readLoginCooldown()>0 ? "login" : "landing";
 }
 
 // Display-only snapshot: backend API remains the authority for authenticated access.

@@ -257,8 +257,8 @@ TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5432/pawcare npm run te
 
 Owners can browse Services & Prices. New invoices require catalog IDs and the
 exact official names and unit prices; the server rejects custom or altered lines.
-Quantity and the existing invoice discount remain available to reception. Paid
-historical receipts retain their original amounts. Older unpaid custom invoices
+Retail quantities remain available to reception within saved prescription limits.
+New payments use no discount; paid historical receipts retain their original amounts. Older unpaid custom invoices
 must be rebuilt from the catalog before payment.
 
 Configure additional fixed products using the server environment variable
@@ -738,7 +738,7 @@ The card shows the entered details and the result of confirmation:
 | Team | Review cards |
 | --- | --- |
 | Owner | Booking or appointment changes; new or corrected pet registration requests |
-| Reception | Bookings and reassignment; walk-in arrivals; new patient/card registration; measured intake; invoice, discount and received payment |
+| Reception | Bookings and reassignment; walk-in arrivals; new patient/card registration; measured intake; invoice and received payment |
 | Veterinarian | Final clinical notes, prescribed supplies, performed services, vaccine/booster details and follow-up; care transfer recipient and instructions |
 | Administrator | Staff invitation recipient and access role |
 
@@ -1489,3 +1489,34 @@ product metadata: it retains the existing Canex/Drontal choices with no invented
 stock. Explicitly configured product lists take precedence. The optional lot
 input is hidden when no configured lots are available; configured lot selection
 and required vaccination lot entry remain available.
+
+
+### Login lock and checkout limits
+
+An incorrect password shows the remaining attempt. Two consecutive incorrect
+passwords lock an active account until its emailed unlock link is confirmed.
+Unlock links expire after 30 minutes, are stored as hashes, require confirmed
+email delivery and can be consumed once. Repeated login requests while locked
+can resend the email at most once per minute. Missing or failed email delivery
+keeps the account locked and offers a retry; development outbox messages do not
+authorize unlocks.
+
+Confirming the link returns to login and starts a server-enforced two-minute
+cooldown. The login countdown survives refresh in the same tab. Changing browser
+storage does not bypass the server deadline. After it expires, login is available
+and a wrong password starts a fresh two-attempt cycle. Password recovery and an
+administrator's explicit staff unlock retain their existing recovery behavior.
+
+New payments do not accept discounts. Checkout add-ons are limited to shampoo
+and accessories from the official catalog. Saved veterinarian-confirmed services,
+prescriptions and admission supplies remain on the invoice with their existing
+quantity rules; reception cannot introduce additional clinical services or other
+products. Historical receipts retain their original discounts and amounts.
+
+Checks: `npm run test:auth`, `npm run test:clinic`,
+`TEST_DATABASE_URL=<disposable-local-database> npm run test:lockout:postgres`,
+`npm run test:recovery:postgres` with the same local database, `npm run test:ui`,
+and `npm run build`. The `/tests/browser/auth-checkout.html` fixture uses synthetic
+HTTP responses and checks warning/lock feedback, unlock POST, persistent
+countdown, retail-only additions, totals and inline quantity/cash/reference
+validation without sending email or committing a payment.

@@ -9,7 +9,7 @@ export const auth = {
   register: (d) => api.post("/api/auth/register", d),
   resendVerification: (email) => api.post("/api/auth/resend-verification", { email }),
   verifyEmail: (token) => api.get(`/api/auth/verify-email?token=${encodeURIComponent(token)}`),
-  unlock: (token) => api.get(`/api/auth/unlock?token=${encodeURIComponent(token)}`),
+  unlock: (token) => api.post("/api/auth/unlock", { token }),
   otpInfo: () => api.get("/api/auth/otp/info"),
   otpSend: () => api.post("/api/auth/otp/resend"),
   otpVerify: (code) => api.post("/api/auth/otp/verify", { code }),

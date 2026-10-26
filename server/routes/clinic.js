@@ -28,7 +28,7 @@ import { clinicalCharges, validateClinicalCharges } from "../clinicalCharges.js"
 import { boosterDate } from "../../src/clinicalWorkflow.js";
 import { ensurePrescriptionSchema, normalizePrescription, prescriptionInvoice, validatePrescriptionSale } from "../prescriptions.js";
 import { ensureCareSchema, validateCarePlan } from "../careWorkflow.js";
-import { priceCatalog, canonicalInvoice } from "../priceCatalog.js";
+import { priceCatalog, canonicalInvoice, validateCheckoutAddons } from "../priceCatalog.js";
 import { adminRouter } from "./admin.js";
 import {walkInReasonError} from '../../src/walkInRegistration.js';
 import { validateWalkInRegistration } from '../walkInRegistration.js';
@@ -1373,14 +1373,15 @@ clinicRouter.post("/appointments/:id/billing", async (req, res) => {
   const { amount, billingStatus, paymentMethod, actorName, actorRole } = req.body;
   const invoiceItems = req.body.invoiceItems;
 
-  const discount = req.body.discount === undefined ? 0 : Number(req.body.discount);
+  if (req.body.discount !== undefined && req.body.discount !== 0) return res.status(400).json({error:'Discounts are not available for new payments.'});
+  const discount = 0;
   const validItems = Array.isArray(invoiceItems) && invoiceItems.length > 0 && invoiceItems.length <= 100 && invoiceItems.every(item => item && typeof item.name === "string" && item.name.trim() && typeof item.price === "number" && Number.isFinite(item.price) && item.price >= 0 && item.price <= 10000000 && Number.isInteger(item.qty) && item.qty > 0 && item.qty <= 1000);
   const subtotal = validItems ? invoiceItems.reduce((sum, item) => sum + Math.round(item.price * 100) * item.qty, 0) : NaN;
   const total = (subtotal - Math.round(discount * 100)) / 100;
-  if (!validItems || !Number.isFinite(discount) || discount < 0 || !Number.isFinite(total) || total <= 0 || total > 10000000 || typeof amount !== "number" || !Number.isFinite(amount) || Math.round(amount * 100) !== Math.round(total * 100) || !["Cash", "GCash", "Maya", "Credit / Debit Card"].includes(paymentMethod) || (billingStatus && billingStatus !== "Paid")) {
-    return res.status(400).json({ error: "Check invoice quantities, prices, discount, total and payment method." });
+  if (!validItems || !Number.isFinite(discount) || discount < 0 || !Number.isFinite(total) || total <= 0 || total > 10000000 || typeof amount !== "number" || !Number.isFinite(amount) || Math.abs(amount * 100 - Math.round(amount * 100)) > 0.000001 || Math.round(amount * 100) !== Math.round(total * 100) || !["Cash", "GCash", "Maya", "Credit / Debit Card"].includes(paymentMethod) || (billingStatus && billingStatus !== "Paid")) {
+    return res.status(400).json({ error: "Check invoice quantities, prices, total and payment method." });
   }
-  if (paymentMethod === "Cash" ? (typeof req.body.cashTendered !== "number" || !Number.isFinite(req.body.cashTendered) || req.body.cashTendered < total) : (typeof req.body.paymentReference !== "string" || req.body.paymentReference.trim().length < 4 || req.body.paymentReference.length > 100)) return res.status(400).json({ error: "Enter sufficient cash received or the confirmed payment reference." });
+  if (paymentMethod === "Cash" ? (typeof req.body.cashTendered !== "number" || !Number.isFinite(req.body.cashTendered) || !Number.isSafeInteger(Math.round(req.body.cashTendered * 100)) || Math.abs(req.body.cashTendered * 100 - Math.round(req.body.cashTendered * 100)) > 0.000001 || req.body.cashTendered < total) : (typeof req.body.paymentReference !== "string" || req.body.paymentReference.trim().length < 4 || req.body.paymentReference.length > 100)) return res.status(400).json({ error: "Enter sufficient cash received or the confirmed payment reference." });
   try {
     await ensureDigitalVetCardSchema();
     await ensureCheckoutSchema();
@@ -1403,6 +1404,8 @@ clinicRouter.post("/appointments/:id/billing", async (req, res) => {
       if (admissionError) throw Object.assign(new Error(admissionError), {status:400});
       const chargeError = validateClinicalCharges(canonical, consultation.performed_services || []);
       if (chargeError) throw Object.assign(new Error(chargeError), {status:400});
+      const addonError = validateCheckoutAddons(canonical, consultation, current.invoice_items || []);
+      if (addonError) throw Object.assign(new Error(addonError), {status:400});
       const saleError = validatePrescriptionSale(canonical.filter(line => line.source !== 'admission'), consultation.prescription_items || []);
       if (saleError) throw Object.assign(new Error(saleError), {status: 400});
       await authorizeCheckoutPayment(client, apptId, req.user, req.body.claimToken);

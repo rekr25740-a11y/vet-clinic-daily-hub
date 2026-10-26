@@ -1,3 +1,4 @@
+import {saveLoginCooldown} from '../loginCooldown.js';
 import {useResendTimer} from "../useResendTimer.js";
 import { useState, useEffect, useRef } from "react";
 import AuthShell, { AuthBrand } from "./AuthShell.jsx";
@@ -16,7 +17,6 @@ import {
   Copy,
   Check,
   Sparkles,
-  Lock,
   ArrowLeft
 } from "lucide-react";
 import "./auth.css";
@@ -363,98 +363,30 @@ export function Otp({ onDone, onBack, enabled = true }) {
   );
 }
 
-/* ---------- 3. Unlock link: 2-minute cooling countdown ---------- */
+/* ---------- 3. Confirm unlock link, then return to login for cooldown ---------- */
 export function Unlock({ token, onDone }) {
-  const [wait, setWait] = useState(null);
-  const [left, setLeft] = useState(0);
-  const [err, setErr] = useState("");
-
-  const check = async () => {
+  const [err,setErr]=useState('');
+  const [busy,setBusy]=useState(false);
+  const started=useRef(false);
+  const check=async()=>{
+    setErr('');setBusy(true);
     try {
-      const r = await auth.unlock(token);
-      if (r.status === "ok") return onDone("Account unlocked. You can log in now.");
-      if (r.status === "wait") return setWait({ s: r.seconds, at: Date.now() });
-      onDone("That unlock link is invalid or expired. Try logging in again to get a new one.", true);
-    } catch (x) {
-      setErr(x.offline ? OFFLINE_MSG : x.message || "We couldn’t check that link. Please try again.");
-    }
+      const result=await auth.unlock(token);
+      if(result.status!=='ok' || !result.cooldownUntil)throw Error('That unlock link is invalid or expired.');
+      saveLoginCooldown(result.cooldownUntil);
+      onDone('Unlock link confirmed. Wait for the 2-minute cooldown below, then log in.');
+    } catch(error) {
+      setErr(error.message || 'Could not confirm the unlock link. Please try again.');
+    } finally {setBusy(false);}
   };
-
-  const started = useRef(false);
-  useEffect(() => {
-    if (started.current) return;
-    started.current = true;
-    check();
-  }, []); // eslint-disable-line
-
-  useEffect(() => {
-    if (!wait) return;
-    const end = wait.at + wait.s * 1000;
-    const tick = () => {
-      const l = Math.max(0, Math.ceil((end - Date.now()) / 1000));
-      setLeft(l);
-      if (!l) {
-        clearInterval(id);
-        setWait(null);
-        check();
-      }
-    };
-    const id = setInterval(tick, 1000);
-    tick();
-    return () => clearInterval(id);
-  }, [wait]); // eslint-disable-line
-
-  return (
-    <AuthShell title={<>Your account, <em>protected.</em></>} description="A short security pause helps protect your account before you log in again.">
-
-      <div className="login-card auth-verify-card">
-          <AuthBrand />
-        <div className="envelope-badge-wrap">
-          <div className="envelope-pulse-bg" />
-          <div className="envelope-icon-box" style={{ background: "linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%)" }}>
-            <Lock size={32} />
-          </div>
-          <div className="envelope-paw-tag"><ShieldCheck size={15} aria-hidden="true" /></div>
-        </div>
-
-        <h2>Cooling Period Active</h2>
-
-        {err ? (
-          <p className="err" role="alert">{err}</p>
-        ) : wait ? (
-          <>
-            <p className="card-subtitle">
-              Cooling period in progress. Your account will automatically unlock when the timer finishes:
-            </p>
-            <div
-              style={{
-                fontSize: "46px",
-                fontWeight: 800,
-                color: "var(--navy)",
-                letterSpacing: "0.04em",
-                fontVariantNumeric: "tabular-nums",
-                margin: "12px 0 16px"
-              }}
-            >
-              {Math.floor(left / 60)}:{String(left % 60).padStart(2, "0")}
-            </div>
-            <p className="auth-fine" style={{ marginBottom: "20px" }}>
-              Please keep this page open. It will automatically redirect once unlocked.
-            </p>
-          </>
-        ) : (
-          <p className="card-subtitle">Verifying security token...</p>
-        )}
-
-        <button
-          type="button"
-          className="btn ghost wide"
-          onClick={() => onDone("")}
-          style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "6px" }}
-        >
-          <ArrowLeft size={16} /> Return to Log in
-        </button>
-      </div>
-    </AuthShell>
-  );
+  useEffect(()=>{if(!started.current){started.current=true;check();}},[]); // eslint-disable-line
+  return <AuthShell title={<>Your account, <em>protected.</em></>} description="Confirm your unlock link to start the short login cooldown.">
+    <div className="login-card auth-verify-card">
+      <AuthBrand />
+      <h2>Confirming your unlock link</h2>
+      {err ? <p className="err" role="alert">{err}</p> : <p role="status">Checking your link…</p>}
+      {err && <button type="button" className="btn gold wide" disabled={busy} onClick={check}>Retry link</button>}
+      <button type="button" className="btn ghost wide" disabled={busy} onClick={()=>onDone('')}>Return to Log in</button>
+    </div>
+  </AuthShell>;
 }

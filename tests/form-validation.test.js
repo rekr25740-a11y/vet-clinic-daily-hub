@@ -38,6 +38,8 @@ test('billing rejects fractional and unauthorized quantities without changing ty
 test('billing immediately revalidates cash and discount when invoice changes',()=>{
   assert.ok(Object.values(paymentErrors(payment)).every(v=>!v));
   assert.ok(paymentErrors({...payment,cashTendered:'199.99'}).cashTendered);
+  assert.ok(paymentErrors({...payment,cashTendered:'200.001'}).cashTendered);
+  assert.ok(paymentErrors({...payment,method:'Unknown'}).method);
   assert.ok(paymentErrors({...payment,discount:'201'}).discount);
   assert.ok(paymentErrors({...payment,discount:'-1'}).discount);
   assert.ok(paymentErrors({...payment,discount:'200'}).invoice);

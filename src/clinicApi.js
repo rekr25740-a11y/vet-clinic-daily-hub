@@ -27,6 +27,8 @@ export async function clinicRequest(method, path, body, options = {}) {
     const error = new Error(data?.error || `The clinic request failed (${response.status}). Please try again.`);
     error.status = response.status;
     error.fields = data?.errors;
+    error.cooldownUntil = data?.cooldownUntil;
+    error.unlockRequired = data?.unlockRequired === true;
     error.unverified = data?.unverified === true;
     error.retryAfter = Number(data?.retryAfter || response.headers.get("Retry-After")) || 0;
     error.isApiError = true;

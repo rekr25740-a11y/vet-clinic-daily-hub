@@ -1,3 +1,4 @@
+import {passwordLogin,consumeUnlock} from '../loginLockout.js';
 import {ensureVerificationDelivery,confirmDelivery,issueVerification,sendMobileVerification,verificationFailure} from '../verificationDelivery.js';
 import {appUrl,sessionCookie} from '../appOrigin.js';
 import {requestPasswordReset,resetPassword} from '../passwordRecovery.js';
@@ -7,7 +8,6 @@ import express from 'express';
 import { query, withTransaction } from '../db.js';
 import {
   hashPassword,
-  verifyPassword,
   sha256,
   randomHex,
   validatePasswordComplexity,
@@ -20,7 +20,6 @@ import { validateOwnerRegistration } from '../registrationValidation.js';
 export const getAppUrl = () => appUrl();
 
 const router = express.Router();
-const G = 'Invalid email or password.';
 router.post('/forgot',requestPasswordReset);
 router.post('/reset',resetPassword);
 
@@ -240,7 +239,7 @@ router.post('/register', async (req, res) => {
 // A password reset must revoke sessions even when a password login was already in flight.
 async function checkLoginSnapshot(client,user) {
   const current=(await client.query('SELECT * FROM users WHERE id=$1 FOR SHARE',[user.id])).rows[0];
-  if(!current || current.is_active===false || current.password_hash!==user.password_hash || current.email!==user.email
+  if(!current || current.is_active===false || current.is_locked || current.password_hash!==user.password_hash || current.email!==user.email
     || current.mobile_verified!==user.mobile_verified || current.role!==user.role || (current.role==='owner' && !current.email_verified_at)) {
     throw Object.assign(new Error('Account access changed. Please sign in again.'),{status:401});
   }
@@ -256,48 +255,15 @@ router.post('/login', async (req, res) => {
       return res.status(400).json({ error: 'Email and password are required.' });
     }
 
-    const r = await query('SELECT * FROM users WHERE LOWER(email) = $1', [em]);
-    if (!r.rows.length) {
-      return res.status(401).json({ error: G });
+    if(typeof password !== 'string' || password.length>1000 || em.length>255) return res.status(400).json({error:'Enter a valid email and password.'});
+    const result=await passwordLogin(em,password);
+    if(!result.user) {
+      const {status,...body}=result;
+      res.set('Cache-Control','no-store');
+      if(body.retryAfter)res.set('Retry-After',String(body.retryAfter));
+      return res.status(status).json(body);
     }
-
-    const u = r.rows[0];
-    if (u.is_active === false) return res.status(403).json({ error: 'Your account is inactive. Contact the clinic administrator.' });
-
-    // Check account lockout
-    if (u.is_locked) {
-      if (u.lockout_until && new Date() < new Date(u.lockout_until)) {
-        const waitMins = Math.ceil((new Date(u.lockout_until) - new Date()) / 60000);
-        return res.status(423).json({
-          error: `Account locked due to 3 failed attempts. Please wait ${waitMins} minute(s) cooling period or use unlock link.`,
-          locked: true,
-        });
-      }
-    }
-
-    const valid = await verifyPassword(password, u.password_hash);
-    if (!valid) {
-      const attempts = (u.failed_login_attempts || 0) + 1;
-      if (attempts >= 3) {
-        const lockoutUntil = new Date(Date.now() + 2 * 60 * 1000); // 2-minute cooling period
-        await query(
-          'UPDATE users SET failed_login_attempts = $1, is_locked = true, lockout_until = $2 WHERE id = $3',
-          [attempts, lockoutUntil, u.id]
-        );
-        return res.status(423).json({
-          error: 'Your account has been locked after 3 failed sign-in attempts. A 2-minute cooling period is in effect.',
-          locked: true,
-        });
-      } else {
-        await query('UPDATE users SET failed_login_attempts = $1 WHERE id = $2', [attempts, u.id]);
-        return res.status(401).json({
-          error: `Invalid email or password. ${3 - attempts} attempt(s) remaining before temporary lockout.`,
-        });
-      }
-    }
-
-    // Reset login attempts on success
-    await query('UPDATE users SET failed_login_attempts = 0, is_locked = false, lockout_until = NULL WHERE id = $1', [u.id]);
+    const u=result.user;
 
     if (u.role === 'owner' && !u.email_verified_at) {
       return res.status(403).json({ error: 'Please verify your email address first (check your inbox).', unverified: true });
@@ -543,29 +509,15 @@ router.post(['/otp/verify', '/verify-otp'], async (req, res) => {
 
 // 8. UNLOCK STATUS & EXECUTE
 router.post('/unlock', async (req, res) => {
-  const { token } = req.body;
-  if (!token) return res.status(400).json({ error: 'Unlock token is required.' });
-
+  const token=req.body?.token;
+  if(typeof token!=='string' || !/^[a-f0-9]{64}$/.test(token))return res.status(400).json({error:'Unlock link is invalid or expired.'});
+  res.set('Cache-Control','no-store');
   try {
-    const r = await query(
-      `SELECT * FROM verification_tokens WHERE token_hash = $1 AND type = 'account_unlock' AND expired_at > NOW()`,
-      [sha256(token)]
-    );
-    if (!r.rows.length) {
-      return res.status(400).json({ error: 'Unlock link is invalid or expired.' });
-    }
-
-    const tok = r.rows[0];
-    await query(
-      'UPDATE users SET is_locked = false, failed_login_attempts = 0, lockout_until = NULL WHERE id = $1',
-      [tok.user_id]
-    );
-    await query('DELETE FROM verification_tokens WHERE id = $1', [tok.id]);
-
-    res.json({ status: 'ok', message: 'Account unlocked! You can now log in.' });
-  } catch (err) {
-    console.error('Unlock error:', err);
-    res.status(500).json({ error: 'Account unlock failed.' });
+    const result=await consumeUnlock(token);
+    if(!result)return res.status(400).json({error:'Unlock link is invalid, expired or already used. Retry login to request another link.'});
+    return res.json(result);
+  } catch {
+    return res.status(500).json({error:'Account unlock is unavailable. Please try again.'});
   }
 });
 

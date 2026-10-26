@@ -213,3 +213,10 @@ test('a login using a credential snapshot from before reset cannot create a new 
  steps=[{sql:/SELECT \* FROM users/,rows:[snapshot]},{sql:/UPDATE users SET failed_login_attempts = 0/},{sql:/SELECT \* FROM users WHERE id=\$1 FOR SHARE/,rows:[{...snapshot,password_hash:'changed-after-recovery'}]}];
  const result=await request('/login',{body:{email:user.email,password}});assert.equal(result.res.status,401);assert.equal(result.data.token,undefined);assert.equal(result.res.headers.get('set-cookie'),null);
 });
+
+test('a lock applied after password verification prevents session creation',async()=>{
+ const password='Synthetic123!',snapshot={...user,mobile_verified:true,password_hash:await hashPassword(password)};
+ steps=[{sql:/SELECT \* FROM users/,rows:[snapshot]},{sql:/UPDATE users SET failed_login_attempts = 0/},{sql:/SELECT \* FROM users WHERE id=\$1 FOR SHARE/,rows:[{...snapshot,is_locked:true}]}];
+ const result=await request('/login',{body:{email:user.email,password}});
+ assert.equal(result.res.status,401);assert.equal(result.data.token,undefined);assert.equal(result.res.headers.get('set-cookie'),null);
+});

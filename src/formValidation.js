@@ -57,7 +57,8 @@ export function paymentErrors({items,discount,cashTendered,refNo,method,prescrib
   const subtotal=items.reduce((sum,item)=>sum+item.price*Number(item.qty),0), total=(Math.round(subtotal*100)-Math.round(Number(discount)*100))/100;
   errors.discount=numberError(discount,'Discount',0,Number.isFinite(subtotal)?subtotal:0);
   errors.invoice=!items.length || !Number.isFinite(total) || total<=0 || total>10000000 ? 'The invoice total must be greater than zero and at most ₱10,000,000.' : '';
-  if(method==='Cash') errors.cashTendered=String(cashTendered).trim()==='' ? 'Enter the actual cash received.' : !Number.isFinite(Number(cashTendered)) || Number(cashTendered)<Math.max(0,total) ? 'Cash received must cover the total amount due.' : '';
+  errors.method=['Cash','GCash','Maya','Credit / Debit Card'].includes(method) ? '' : 'Choose a valid payment method.';
+  if(method==='Cash') errors.cashTendered=String(cashTendered).trim()==='' ? 'Enter the actual cash received.' : !Number.isFinite(Number(cashTendered)) || !Number.isSafeInteger(Math.round(Number(cashTendered)*100)) || Math.abs(Number(cashTendered)*100-Math.round(Number(cashTendered)*100))>0.000001 || Number(cashTendered)<Math.max(0,total) ? 'Cash received must cover the total amount due and use at most 2 decimal places.' : '';
   else errors.refNo=text(refNo,'Verified payment reference',100,true) || (refNo.trim().length<4 ? 'Use at least 4 characters for the verified reference.' : '');
   return errors;
 }

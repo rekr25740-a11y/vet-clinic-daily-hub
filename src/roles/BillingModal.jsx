@@ -1,3 +1,4 @@
+import {isCheckoutAddon} from '../checkoutProducts.js';
 import ClinicDialog from '../components/ClinicDialog.jsx';
 import {useUnsavedChanges} from '../components/useUnsavedChanges.jsx';
 import { useFormValidation } from '../components/useFormValidation.jsx';
@@ -34,7 +35,7 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
   });
 
   const [method, setMethod] = useState(appt.paymentMethod?.trim() || (appt.billingStatus === "Paid" ? "Not recorded" : "Cash"));
-  const [discount, setDiscount] = useState(String(appt.discount || 0));
+  const discount = 0;
   const [cashTendered, setCashTendered] = useState("");
   const [refNo, setRefNo] = useState(appt.paymentReference || "");
   const [formErr, setFormErr] = useState("");
@@ -61,6 +62,7 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
   }, [catalogAttempt]);
 
   const addItem = (item) => {
+    if (!isCheckoutAddon(item)) return;
     setItems(prev => {
       const existing = prev.find(p => p.catalogId === item.id && p.source !== 'admission');
       if (existing?.source === 'performed') return prev;
@@ -79,16 +81,17 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
     setItems(prev => prev.map((item, i) => i === idx && !['performed','admission'].includes(item.source) ? { ...item, qty } : item));
   };
 
-  const subtotal = items.reduce((sum, item) => sum + (item.price * item.qty), 0);
+  const subtotal = items.reduce((sum, item) => sum + Math.round(item.price * 100) * Number(item.qty), 0) / 100;
   const total = Math.max(0, (Math.round(subtotal * 100) - Math.round(Number(discount) * 100)) / 100);
   const unsaved=useUnsavedChanges({value:{items,method,discount,cashTendered,refNo},saving:loading,active:!paid,onClose});
   const errors = paymentErrors({items,discount,cashTendered,refNo,method,prescribed});
   const validation = useFormValidation(errors);
-  const change = method === "Cash" ? Math.max(0, (+cashTendered || 0) - total) : 0;
+  const change = method === "Cash" ? Math.max(0, Math.round(((+cashTendered || 0) - total) * 100) / 100) : 0;
 
+  const addons = catalog.filter(isCheckoutAddon);
   const filteredCatalog = search.trim()
-    ? catalog.filter(c => c.name.toLowerCase().includes(search.toLowerCase()) || c.category.toLowerCase().includes(search.toLowerCase()))
-    : catalog;
+    ? addons.filter(c => c.name.toLowerCase().includes(search.trim().toLowerCase()) || c.category.toLowerCase().includes(search.trim().toLowerCase()))
+    : addons;
 
   const review = useSubmissionReview([items,method,discount,cashTendered,refNo,claim.ready,claim.claimToken,db.appts.find(a=>a.id===appt.id),pet,owner]);
 
@@ -100,10 +103,6 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
 
     if (!items.length || !Number.isFinite(total) || total <= 0) {
       setFormErr("At least one billable procedure or product is required.");
-      return;
-    }
-    if (!Number.isFinite(+discount) || +discount < 0 || (+discount || 0) > subtotal) {
-      setFormErr("Discount must be between zero and the billable subtotal.");
       return;
     }
     if (method === "Cash") {
@@ -127,7 +126,6 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
         ["Visit",`${appt.date} at ${appt.time}`],
         ["Invoice",items.map(i=>`${i.name} × ${i.qty} — ${money(i.price*i.qty)}`).join("\n")],
         ["Subtotal",money(subtotal)],
-        ["Discount",money(+discount)],
         ["Total due",money(total)],
         ["Payment method",method],...(method === "Cash" ? [["Cash received",money(Number(cashTendered))],
         ["Change",money(change)]] : [["Verified reference",refNo.trim()]])]
@@ -191,7 +189,7 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
               <Receipt size={22} color="#0284c7" /> Front Desk Checkout &amp; Billing
             </h3>
             <span style={{ fontSize: "12px", color: "#64748b" }}>
-              Search clinical services, procedures &amp; medication prices from official database
+              Saved visit charges and optional shampoo or accessories
             </span>
           </div>
           <button type="button" className="btn sm ghost" onClick={unsaved.close} disabled={loading} aria-label="Close" style={{ padding: "6px 10px" }}><X size={16} aria-hidden="true" /></button>
@@ -295,12 +293,12 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
             {/* Price Basis & Search Catalog */}
             <div style={{ marginBottom: "16px" }}>
               <label style={{ display: "block", fontSize: "12.5px", fontWeight: 700, color: "var(--navy)", marginBottom: "4px" }}>
-                Add Services &amp; Other Products
+                Add Shampoo &amp; Accessories
               </label>
               <div style={{ position: "relative" }}>
                 <input
                   type="search"
-                  placeholder="Search vaccines, consultation, shampoo, vitamins, medicine or accessories"
+                  placeholder="Search shampoo or accessories"
                   value={search}
                   onChange={e => setSearch(e.target.value)}
                   style={{ width: "100%", padding: "8px 12px 8px 34px", fontSize: "13px", borderRadius: "8px", border: "1.5px solid #cbd5e1" }}
@@ -348,7 +346,7 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
                     ))
                   ) : (
                     <div style={{ padding: "10px 12px", fontSize: "12px", color: "#64748b" }}>
-                      No matching products or services. Choose an official catalog item.
+                      No matching shampoo or accessories.
                     </div>
                   )}
                 </div>
@@ -356,7 +354,7 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
             </div>
 
             {catalogError && <p role="alert">{catalogError} <button type="button" onClick={() => { setCatalogError(""); setCatalogAttempt(x => x + 1); }}>Retry prices</button></p>}
-            <p>Choose services and other products from the clinic catalog. Unit prices are fixed. Veterinarian-confirmed services are included once and retained for checkout.</p>
+            <p>Add shampoo or accessories from the clinic catalog. Prices are fixed. Saved clinical services are included once.</p>
             <p>Clinic-use medicine supplies are shown separately and retained at their recorded quantities. Take-home products remain subject to the veterinarian’s prescription. Payment does not mark a medicine dose as given.</p>
             {!!prescribed.length && <div style={{padding:12,background:"#eff6ff",borderRadius:8,marginBottom:12}}><b>Veterinarian-prescribed products loaded</b><p>Confirm the actual product form, package size and supply before dispensing. Reduce or remove items that are not dispensed; the signed prescription is retained.</p>{prescribed.map(p => <p key={p.catalogId}><b>{p.name}</b> · {p.quantity} item(s)/package(s)<br />{p.instructions}</p>)}</div>}
             {/* Bill Line Items Table */}
@@ -432,31 +430,16 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
               </div>
             </div>
 
-            {/* Discount & Payment Method */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "16px" }}>
-              <div className="fld" style={{ margin: 0 }}>
-                <label htmlFor="billing-discount" style={{ fontSize: "12px" }}>Discount / Senior (₱)</label>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  {...validation.field('discount')} id="billing-discount" value={discount}
-                  onChange={e => { setDiscount(e.target.value); setFormErr(""); }}
-                  placeholder="0"
-                  className={+discount > subtotal ? "bad" : discount > 0 ? "ok" : ""}
-                  style={{ padding: "6px 10px", fontSize: "13px" }}
-                />
-                {validation.feedback('discount')}
-              </div>
-
+            {/* Payment Method */}
+            <div style={{ marginBottom: "16px" }}>
               <div className="fld" style={{ margin: 0 }}>
                 <label style={{ fontSize: "12px" }}>Payment Method</label>
-                <select value={method} onChange={e => { setMethod(e.target.value); setFormErr(""); }} style={{ padding: "6px 10px", fontSize: "13px" }}>
+                <select {...validation.field('method')} value={method} onChange={e => { setMethod(e.target.value); setFormErr(""); }} style={{ padding: "6px 10px", fontSize: "13px" }}>
                   <option value="Cash">Cash (Over the counter)</option>
                   <option value="GCash">GCash QR / Mobile</option>
                   <option value="Maya">Maya QR / Wallet</option>
                   <option value="Credit / Debit Card">Credit / Debit Card POS</option>
-                </select>
+                </select>{validation.feedback('method')}
               </div>
             </div>
 

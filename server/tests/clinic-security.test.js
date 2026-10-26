@@ -284,18 +284,30 @@ for (const failure of [/INSERT INTO vaccinations/, /SET status = 'Completed'/, /
   assert.equal((await request('vet', 'POST', '/consultations', soap())).status, 500);
   assert.equal(db.consults.length, 0); assert.equal(db.vaccs.length, 0); assert.equal(db.appts[0].status, 'In consultation'); assert.equal(rollbacks, 1);
 });
-const bill = () => ({ amount: 450, discount: 50, billingStatus: 'Paid', paymentMethod: 'Cash', cashTendered: 500, invoiceItems: [{ catalogId: 'srv_consult', name: 'Routine General Consultation & Exam', price: 500, qty: 1 }] });
+const bill = () => ({ amount: 500, discount: 0, billingStatus: 'Paid', paymentMethod: 'Cash', cashTendered: 500, invoiceItems: [{ catalogId: 'srv_consult', name: 'Routine General Consultation & Exam', price: 500, qty: 1 }] });
 test('billing rejects invalid amount, quantity, discount, channel, cash and reference', async () => {
-  for (const body of [{ ...bill(), amount: -1 }, { ...bill(), discount: -50 }, { ...bill(), paymentMethod: 'Invalid' }, { ...bill(), cashTendered: 100 }, { ...bill(), paymentMethod: 'Maya' }, { ...bill(), invoiceItems: [{ name: 'Bad', price: 600, qty: 0.5 }] }]) assert.equal((await request('assistant', 'POST', '/appointments/a1/billing', body)).status, 400);
+  for (const body of [{ ...bill(), amount: -1 }, { ...bill(), amount:500.001 }, { ...bill(), cashTendered:500.001 }, { ...bill(), discount: -50 }, { ...bill(), discount: 50 }, { ...bill(), paymentMethod: 'Invalid' }, { ...bill(), cashTendered: 100 }, { ...bill(), paymentMethod: 'Maya' }, { ...bill(), invoiceItems: [{ name: 'Bad', price: 600, qty: 0.5 }] }]) assert.equal((await request('assistant', 'POST', '/appointments/a1/billing', body)).status, 400);
   assert.equal(calls.some(c => c.sql.startsWith('UPDATE appointments')), false);
+});
+test('checkout rejects direct non-retail additions and accepts shampoo with recorded service', async()=>{
+  db.appts[0].status='Completed';db.consults.push({id:'c1',appt_id:'a1',performed_services:bill().invoiceItems});
+  const product=(await request('assistant','GET','/services/prices')).data.catalog;
+  for(const id of ['srv_chem','srv_dental','product_multivitamin','product_gi_diet']) {
+    const p=product.find(p=>p.id===id),extra={catalogId:p.id,name:p.name,price:p.price,qty:1};
+    const result=await request('assistant','POST','/appointments/a1/billing',{...bill(),amount:500+p.price,cashTendered:500+p.price,invoiceItems:[...bill().invoiceItems,extra]});
+    assert.equal(result.status,400,id);assert.match(result.data.error,/Only shampoo and accessories/);
+  }
+  const p=product.find(p=>p.id==='product_oatmeal_shampoo');
+  const accepted=await request('assistant','POST','/appointments/a1/billing',{...bill(),amount:850,cashTendered:1000,invoiceItems:[...bill().invoiceItems,{catalogId:p.id,name:p.name,price:p.price,qty:1}]});
+  assert.equal(accepted.status,200);assert.equal(accepted.data.appointment.discount,0);assert.equal(accepted.data.appointment.changeAmount,150);
 });
 test('billing requires a completed clinical record and rejects repeat payment', async () => {
   assert.equal((await request('assistant', 'POST', '/appointments/a1/billing', bill())).status, 409);
   db.appts[0].status = 'Completed';
   assert.equal((await request('assistant', 'POST', '/appointments/a1/billing', bill())).status, 409);
-  db.consults.push({ id: 'c1', appt_id: 'a1' });
+  db.consults.push({ id: 'c1', appt_id: 'a1', performed_services: bill().invoiceItems });
   const result = await request('assistant', 'POST', '/appointments/a1/billing', bill());
-  assert.equal(result.status, 200); assert.equal(result.data.appointment.discount, 50); assert.equal(result.data.appointment.changeAmount, 50); assert.equal(db.appts[0].billing_status, 'Paid');
+  assert.equal(result.status, 200); assert.equal(result.data.appointment.discount, 0); assert.equal(result.data.appointment.changeAmount, 0); assert.equal(db.appts[0].billing_status, 'Paid');
   assert.equal((await request('assistant', 'POST', '/appointments/a1/billing', bill())).status, 409);
 });
 test('database access failure fails closed instead of authorizing a mutation', async () => {
@@ -319,7 +331,7 @@ test('booking and walk-in reject nonexistent doctors instead of creating invisib
 });
 
 test('checkout rolls back payment if its durable audit write fails', async () => {
-  db.appts[0].status = 'Completed'; db.consults.push({ id: 'c1', appt_id: 'a1' });
+  db.appts[0].status = 'Completed'; db.consults.push({ id: 'c1', appt_id: 'a1', performed_services: bill().invoiceItems });
   failSql = /INSERT INTO audit_logs/;
   assert.equal((await request('assistant', 'POST', '/appointments/a1/billing', bill())).status, 500);
   assert.equal(db.appts[0].billing_status, 'Unbilled'); assert.equal(rollbacks, 1);
@@ -403,14 +415,14 @@ test('one visit connects owner booking, reception intake, assigned vet care, che
   assert.equal((await request('assistant','PATCH',`/appointments/${id}/status`,{status:'Checked-in',intakeVitals:{weight:5.2,temp:38.6,triageLevel:'Priority'},reason:'Measured intake complaint'})).status,200);
   const queued=visit(await state('vet'));assert.equal(queued.status,'Checked-in');assert.equal(queued.date,clinicClock().date);assert.equal(queued.intakeVitals.weight,5.2);assert.equal(queued.reason,'Measured intake complaint');
   assert.equal((await request('vet','PATCH',`/appointments/${id}/status`,{status:'In consultation'})).status,200);
-  const clinical={...soap(),id:'connected-notes',apptId:id,date:clinicClock().date,vaccination:undefined};
+  const clinical={...soap(),id:'connected-notes',apptId:id,date:clinicClock().date,vaccination:undefined,performedServices:['srv_consult']};
   assert.equal((await request('vet','POST','/consultations',clinical)).status,200);
   assert.equal(visit(await state('assistant')).status,'Completed');
   assert.equal(db.tasks.find(t=>t.appointment_id===id).status,'pending');
   const payment=await request('assistant','POST',`/appointments/${id}/billing`,bill());assert.equal(payment.status,200);
   const owner=await state('owner'),saved=owner.records.find(r=>r.apptId===id);
   assert.equal(saved.id,'connected-notes');assert.equal(saved.diagnosis,clinical.diagnosis);assert.equal(saved.vetId,'v1');
-  assert.equal(visit(owner).billingStatus,'Paid');assert.equal(visit(owner).amount,450);assert.equal(visit(owner).paidAt,'2026-10-24T10:30:00Z');
+  assert.equal(visit(owner).billingStatus,'Paid');assert.equal(visit(owner).amount,500);assert.equal(visit(owner).paidAt,'2026-10-24T10:30:00Z');
   assert.equal(db.tasks.find(t=>t.appointment_id===id).status,'completed');
   const admin=await state('admin');assert.equal(visit(admin).billingStatus,'Paid');
   for(const role of ['owner','assistant','vet'])assert.ok(admin.log.some(l=>l.role===role),role+' audit retained');

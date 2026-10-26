@@ -28,3 +28,20 @@ test('historical consultation cannot create an already overdue follow-up',()=>{
  assert.ok(validateCarePlan(plan,'2026-10-20','2026-10-24'));
  assert.equal(validateCarePlan({...plan,followUpDate:'2026-10-24'},'2026-10-20','2026-10-24'),null);
 });
+
+test('checkout additions allow shampoo/accessories and reject unrecorded clinical items', async()=>{
+ const {validateCheckoutAddons}=await import('../priceCatalog.js');
+ const catalog=priceCatalog(),line=id=>{const p=catalog.find(p=>p.id===id);return{catalogId:p.id,name:p.name,price:p.price,qty:1};};
+ for(const p of catalog){
+  const allowed=['Pet shampoo','Pet accessories'].includes(p.category) && !p.requiresPrescription;
+  assert.equal(validateCheckoutAddons([line(p.id)],{})===null,allowed,p.id);
+ }
+ const service=line('srv_consult'),vitamin=line('product_multivitamin'),medicine=line('srv_nexgard');
+ assert.equal(validateCheckoutAddons([service],{performed_services:[service]}),null);
+ assert.equal(validateCheckoutAddons([service],{},[service]),null,'Retain legacy saved charges');
+ assert.ok(validateCheckoutAddons([{...service,qty:2}],{},[service]));
+ assert.equal(validateCheckoutAddons([vitamin,medicine],{prescription_items:[{catalogId:vitamin.catalogId,quantity:1},{catalogId:medicine.catalogId,quantity:1}]}),null);
+ assert.ok(validateCheckoutAddons([{...medicine,qty:2}],{prescription_items:[{catalogId:medicine.catalogId,quantity:1}]}));
+ const shampoo=line('product_oatmeal_shampoo');assert.ok(validateCheckoutAddons([shampoo,shampoo],{}));
+ assert.ok(validateCheckoutAddons([{...service,category:'Pet shampoo',source:'performed'}],{}),'Forged source/category cannot authorize a service');
+});

@@ -1,3 +1,4 @@
+import {readLoginCooldown,saveLoginCooldown} from '../loginCooldown.js';
 import {useResendTimer} from "../useResendTimer.js";
 ﻿import { useState, useRef } from "react";
 import { Logo, ROLES } from "../lib.jsx";
@@ -33,6 +34,10 @@ const DEMO = {
 
 export default function Login({ role, notice, bad, onLogin, onBack, go }) {
   const f = useLive({ email: "", password: "" }, validateLogin);
+  const [loginWait,setLoginWait]=useResendTimer(Math.max(0,Math.ceil((readLoginCooldown()-Date.now())/1000)));
+  const [unlockRetry,setUnlockRetry]=useResendTimer();
+  const [needsUnlock,setNeedsUnlock]=useState(false);
+  const [hadCooldown,setHadCooldown]=useState(()=>readLoginCooldown()>0);
   const [show, setShow] = useState(false);
   const [busy, setBusy] = useState(false);
   const [top, setTop] = useState("");
@@ -48,7 +53,7 @@ export default function Login({ role, notice, bad, onLogin, onBack, go }) {
     setRv("");
     setUnver(false);
     f.submit(e);
-    if (!f.valid || busy) return;
+    if (!f.valid || busy || loginWait>0 || unlockRetry>0) return;
     setBusy(true);
     try {
       const r = await auth.login(f.v.email.trim(), f.v.password);
@@ -56,6 +61,9 @@ export default function Login({ role, notice, bad, onLogin, onBack, go }) {
       return;
     } catch (x) {
       setUnver(!!x.unverified);
+      setNeedsUnlock(!!x.unlockRequired);
+      if(x.unlockRequired)setUnlockRetry(x.retryAfter || 60);
+      if(x.cooldownUntil){setLoginWait(saveLoginCooldown(x.cooldownUntil));setHadCooldown(true);}
       setTop(x.offline ? OFFLINE_MSG : x.message || "Invalid email or password.");
     }
     setBusy(false);
@@ -172,8 +180,10 @@ export default function Login({ role, notice, bad, onLogin, onBack, go }) {
         {unver && <button type="button" className="lnk" disabled={resending || busy || cool>0} onClick={resend}>{resending?"Sending…":cool>0?`Resend email in ${cool}s`:"Resend verification email"}</button>}
         {rv && <p className="okm" role="status" style={{ color: "var(--ok, #16a34a)" }}>{rv}</p>}
 
-        <button className="btn gold wide login-submit" disabled={busy}>
-          {busy ? "Logging in…" : "Log in"}
+        {loginWait>0 && <p role="status">Login available in {Math.floor(loginWait/60)}:{String(loginWait%60).padStart(2,'0')}. The cooldown continues if you refresh.</p>}
+        {hadCooldown && loginWait===0 && <p role="status">Cooldown complete. You can log in now.</p>}
+        <button className="btn gold wide login-submit" disabled={busy || loginWait>0 || unlockRetry>0}>
+          {busy ? "Please wait…" : loginWait>0 ? "Login cooling down" : unlockRetry>0 ? `Retry unlock email in ${unlockRetry}s` : needsUnlock ? "Send unlock email again" : "Log in"}
         </button>
         <p className="auth-alt">
           New pet owner? <button type="button" className="lnk" onClick={() => go("register")}>Create an account</button>
